@@ -100,6 +100,7 @@ def init_state() -> None:
         "contact_phone": "",
         "scheduled_datetime": None,
         "assigned_technician": [],
+        "service_call": "",
         # Problème
         "intervention_goal": "",
         "reported_issue": "",
@@ -263,6 +264,7 @@ def build_payload() -> Dict[str, Any]:
             "contact_name": clean_text(st.session_state.contact_name),
             "contact_phone": clean_text(st.session_state.contact_phone),
             "scheduled_datetime": format_datetime(st.session_state.scheduled_datetime),
+            "service_call": clean_text(st.session_state.service_call),
             "assigned_technician": ", ".join(st.session_state.assigned_technician) if isinstance(st.session_state.assigned_technician, list) else clean_text(st.session_state.assigned_technician),
             "intervention_goal": clean_text(st.session_state.intervention_goal),
         },
@@ -315,13 +317,19 @@ def report_markdown(payload: Dict[str, Any]) -> str:
     lines.append("|  |  |")
     lines.append("|---|---|")
     lines.append(f"| 🏢 **Client** | {mandat['client_name'] or '-'} |")
+    lines.append(f"| 🏷️ **Appel #** | {mandat.get('service_call', '') or '-'} |")
     lines.append(f"| 📍 **Adresse** | {mandat['address'] or '-'} |")
     lines.append(f"| 👤 **Contact** | {mandat['contact_name'] or '-'} |")
     lines.append(f"| 📞 **Téléphone** | {mandat['contact_phone'] or '-'} |")
     lines.append(f"| 📅 **Date / heure** | {mandat['scheduled_datetime'] or '-'} |")
     lines.append(f"| 🔧 **Technicien** | {mandat['assigned_technician'] or '-'} |")
     lines.append("")
-    lines.append(f"**🎯 Objectif** : {mandat['intervention_goal'] or '-'}")
+    lines.append("**🎯 Objectif** :")
+    goal_lines = split_lines(mandat['intervention_goal'])
+    if goal_lines:
+        lines.extend([f"- {item}" for item in goal_lines])
+    else:
+        lines.append("-")
     lines.append("")
 
     # ── Problème ─────────────────────────────────────────
@@ -448,6 +456,7 @@ def generate_pdf(payload: Dict[str, Any]) -> bytes:
 
     mandat_data = [
         ["Client",      mandat['client_name'] or '-'],
+        ["Appel #",     mandat.get('service_call', '') or '-'],
         ["Adresse",     mandat['address'] or '-'],
         ["Contact",     mandat['contact_name'] or '-'],
         ["Téléphone",   mandat['contact_phone'] or '-'],
@@ -471,7 +480,17 @@ def generate_pdf(payload: Dict[str, Any]) -> bytes:
     ]))
     story.append(tbl)
     story.append(Spacer(1, 5))
-    story.append(Paragraph(f"<b>Objectif :</b> {mandat['intervention_goal'] or '-'}", body))
+    story.append(Paragraph("<b>Objectif :</b>", body))
+    goal_lines = split_lines(mandat['intervention_goal'])
+    if goal_lines:
+        flow = ListFlowable(
+            [ListItem(Paragraph(item, small)) for item in goal_lines],
+            bulletType="bullet",
+            leftIndent=14,
+        )
+        story.append(flow)
+    else:
+        story.append(Paragraph("-", body))
     story.append(Spacer(1, 8))
 
     def add_section(title: str, text: str) -> None:
@@ -748,6 +767,7 @@ with tab_prep:
                 st.text_input("Adresse *", key="address")
                 st.text_input("Téléphone", key="contact_phone")
                 st.datetime_input("Date / heure prévue", key="scheduled_datetime", value=None)
+                st.text_input("Appel de service #", key="service_call")
             st.text_area(
                 "Objectif de l'intervention *",
                 key="intervention_goal",
