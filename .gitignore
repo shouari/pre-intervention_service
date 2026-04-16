@@ -1,2 +1,5 @@
 /.venv
 .env
+data
+import_json_db.py
+*.json
