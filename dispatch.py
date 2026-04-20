@@ -119,11 +119,16 @@ def send_dispatch_emails(
                     fname  = f"interv_{client}_{sc}.pdf" if sc else f"interv_{client}.pdf"
                     attachments.append({"name": fname, "content": b64})
 
+        first_name = tech.split()[0] if tech else "Technicien"
         req_body: Dict[str, Any] = {
-            "sender":      {"name": "Dispatch Service", "email": sender_email},
+            "templateId":  10,
+            "sender":      {"name": "Planification Intervention", "email": sender_email},
             "to":          [{"email": tech_email_str, "name": tech}],
-            "subject":     f"Appels de service - {format_french_date(date_str)}",
-            "textContent": email_text,
+            "params": {
+                "FIRSTNAME": first_name,
+                "DATE":      format_french_date(date_str),
+                "CONTENT":   email_text,
+            },
         }
         if cc_list:
             req_body["cc"] = cc_list
