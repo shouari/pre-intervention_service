@@ -294,3 +294,13 @@ def log_dispatch(technician: str, dispatch_date: str, status: str, details: str 
     )
     conn.commit()
     conn.close()
+
+
+def get_dispatch_log_for_day(date_str: str) -> List[Dict[str, Any]]:
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT technician, status, timestamp FROM dispatch_log WHERE dispatch_date=? ORDER BY timestamp DESC",
+        (date_str,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]

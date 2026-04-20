@@ -22,7 +22,7 @@ from database import (
     DB_PATH, init_db,
     list_pre_interventions, get_pre_intervention,
     get_real_intervention, save_pre_intervention,
-    get_dispatch_for_day,
+    get_dispatch_for_day, get_dispatch_log_for_day,
 )
 from utils import clean_text, split_lines, safe_filename, format_french_date, completion_score
 from state import (
@@ -454,26 +454,38 @@ with tab_recon:
 # ONGLET DISPATCH
 # ─────────────────────────────────────────────────────────
 with tab_dispatch:
-    st.subheader("Dispatch quotidien")
 
-    c_date, c_send_all = st.columns([2, 1], gap="medium")
-    with c_date:
-        dispatch_date = st.date_input("Sélectionner la date", value=datetime.today().date())
-
+    # ── Header: titre + date + bouton envoi groupé ──────────
+    hc1, hc2, hc3 = st.columns([2, 2, 1], gap="medium")
+    hc1.subheader("📬 Dispatch quotidien")
+    with hc2:
+        dispatch_date = st.date_input(
+            "Date", value=datetime.today().date(),
+            label_visibility="collapsed",
+        )
     date_str      = dispatch_date.strftime("%Y-%m-%d")
     dispatch_data = get_dispatch_for_day(date_str)
-
-    with c_send_all:
-        st.write("")
+    with hc3:
         st.write("")
         do_send_all = st.button(
             "📧 Envoyer à TOUS", use_container_width=True, type="primary",
             disabled=not bool(dispatch_data),
         )
 
+    # ── Métriques récapitulatives ────────────────────────────
+    total_calls = sum(len(c) for c in dispatch_data.values())
+    mc1, mc2, mc3 = st.columns(3)
+    mc1.metric("📅 Journée", format_french_date(date_str))
+    mc2.metric("👷 Techniciens", len(dispatch_data))
+    mc3.metric("🔧 Appels total", total_calls)
+
+    st.divider()
+
+    # ── État vide ────────────────────────────────────────────
     if not dispatch_data:
-        st.warning(f"Aucun appel de service planifié pour le {format_french_date(date_str)}.")
+        st.info(f"Aucun appel de service planifié pour le **{format_french_date(date_str)}**.")
     else:
+        # ── Résultats envoi groupé ───────────────────────────
         if do_send_all:
             tech_emails_ui = {
                 t: st.session_state.get(f"email_input_{t}", TECH_EMAIL_MAP.get(t, ""))
@@ -487,51 +499,95 @@ with tab_dispatch:
                 results = send_dispatch_emails(dispatch_data, date_str, tech_emails_ui, tech_emails_cc)
             for res in results:
                 if res["status"] == "success":
-                    st.success(f"✅ **{res['tech']}** : {res['message']}")
+                    st.success(f"✅ **{res['tech']}** — Email envoyé.")
                 elif res["status"] == "skipped":
-                    st.warning(f"⏭️ **{res['tech']}** ignoré : {res['message']}")
+                    st.warning(f"⏭️ **{res['tech']}** — {res['message']}")
                 else:
-                    st.error(f"❌ **{res['tech']}** : {res['message']}")
+                    st.error(f"❌ **{res['tech']}** — {res['message']}")
             st.divider()
 
+        # Techniciens déjà dispatchés aujourd'hui
+        dispatch_log = get_dispatch_log_for_day(date_str)
+        sent_techs = {e["technician"] for e in dispatch_log if e["status"] == "Success"}
+
+        # ── Carte par technicien ─────────────────────────────
         for tech_full, calls in dispatch_data.items():
-            first_name = tech_full.split()[0] if tech_full else "Inconnu"
-            st.markdown(f"### {first_name} ({len(calls)} appel{'s' if len(calls) > 1 else ''})")
+            first_name    = tech_full.split()[0] if tech_full else "Inconnu"
+            already_sent  = tech_full in sent_techs
 
-            c1, c2 = st.columns(2)
-            with c1:
-                email_val = st.text_input(
-                    "Courriel destinataire",
-                    value=TECH_EMAIL_MAP.get(tech_full, ""),
-                    key=f"email_input_{tech_full}",
-                    placeholder="jean@domaine.com",
-                )
-            with c2:
-                cc_val = st.text_input(
-                    "En copie (CC)",
-                    value="service@groupecs.com",
-                    key=f"cc_input_{tech_full}",
-                    placeholder="Séparer par virgules pour plusieurs",
+            with st.container(border=True):
+                # En-tête de la carte
+                ch1, ch2 = st.columns([4, 1])
+                title = f"#### 👷 {tech_full}"
+                if already_sent:
+                    title += " &nbsp;✅"
+                ch1.markdown(title, unsafe_allow_html=True)
+                ch2.markdown(
+                    f"<div style='text-align:right;padding-top:8px;font-size:0.9em;'>"
+                    f"<b>{len(calls)}</b> appel{'s' if len(calls) > 1 else ''}"
+                    f"</div>",
+                    unsafe_allow_html=True,
                 )
 
-            email_text = build_dispatch_email(tech_full, calls, date_str)
-            st.text_area("Contenu email", value=email_text, height=230, key=f"email_{tech_full}")
+                # Liste des appels
+                for i, call in enumerate(calls):
+                    dt       = call.get("scheduled_datetime", "") or ""
+                    time_str = dt[11:16] if len(dt) >= 16 else "??"
+                    client   = call.get("client_name") or "—"
+                    address  = call.get("address") or "—"
+                    goal     = call.get("intervention_goal") or ""
+                    sc       = call.get("service_call") or ""
 
-            c_dl, c_send = st.columns(2)
-            c_dl.download_button(
-                "📥 Télécharger .txt", data=email_text,
-                file_name=f"dispatch_{safe_filename(tech_full)}_{date_str}.txt",
-                mime="text/plain",
-                key=f"dl_{tech_full}", use_container_width=True,
-            )
-            if c_send.button("📧 Envoyer à ce technicien", key=f"send_{tech_full}", use_container_width=True):
-                with st.spinner(f"Envoi à {first_name}…"):
-                    res = send_dispatch_emails({tech_full: calls}, date_str, {tech_full: email_val}, {tech_full: cc_val})
-                    r = res[0] if res else {}
-                    if r.get("status") == "success":
-                        st.success(f"✅ Email envoyé à {first_name}.")
-                    elif r.get("status") == "skipped":
-                        st.warning(f"⏭️ {first_name} ignoré : {r.get('message')}")
-                    else:
-                        st.error(f"❌ Erreur pour {first_name} : {r.get('message', '?')}")
-            st.divider()
+                    ct, ci = st.columns([1, 5])
+                    with ct:
+                        st.markdown(f"**{time_str}**")
+                    with ci:
+                        label = f"**{client}**"
+                        if sc:
+                            label += f" · `{sc}`"
+                        st.markdown(label)
+                        st.caption(f"📍 {address}")
+                        if goal:
+                            st.caption(f"🎯 {goal}")
+                    if i < len(calls) - 1:
+                        st.divider()
+
+                # Configuration email dans un expandeur
+                with st.expander("📧 Configurer et envoyer l'email"):
+                    ex1, ex2 = st.columns(2)
+                    email_val = ex1.text_input(
+                        "Destinataire",
+                        value=TECH_EMAIL_MAP.get(tech_full, ""),
+                        key=f"email_input_{tech_full}",
+                        placeholder="jean@domaine.com",
+                    )
+                    cc_val = ex2.text_input(
+                        "Copie (CC)",
+                        value="service@groupecs.com",
+                        key=f"cc_input_{tech_full}",
+                        placeholder="Séparer par virgules",
+                    )
+                    eb1, eb2 = st.columns(2)
+                    email_text = build_dispatch_email(tech_full, calls, date_str)
+                    eb1.download_button(
+                        "📥 Télécharger .txt", data=email_text,
+                        file_name=f"dispatch_{safe_filename(tech_full)}_{date_str}.txt",
+                        mime="text/plain",
+                        key=f"dl_{tech_full}", use_container_width=True,
+                    )
+                    if eb2.button(
+                        "📧 Envoyer", key=f"send_{tech_full}",
+                        use_container_width=True, type="primary",
+                    ):
+                        with st.spinner(f"Envoi à {first_name}…"):
+                            res = send_dispatch_emails(
+                                {tech_full: calls}, date_str,
+                                {tech_full: email_val}, {tech_full: cc_val},
+                            )
+                            r = res[0] if res else {}
+                            if r.get("status") == "success":
+                                st.success(f"✅ Email envoyé à {first_name}.")
+                            elif r.get("status") == "skipped":
+                                st.warning(f"⏭️ {first_name} : {r.get('message')}")
+                            else:
+                                st.error(f"❌ {first_name} : {r.get('message', '?')}")

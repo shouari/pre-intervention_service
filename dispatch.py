@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -31,30 +32,18 @@ def _get_sender_email() -> str:
 # ─── Construction du texte email ───────────────────────────
 
 def build_dispatch_email(tech: str, calls: List[Dict[str, Any]], date_str: str) -> str:
+    # On garde la version texte pour le fallback ou les logs
     readable_date = format_french_date(date_str)
     first_name = tech.split()[0] if tech else "Technicien"
-
-    lines = [
-        f"Bonjour {first_name},",
-        "",
-        f"Voici tes appels de service pour le {readable_date} :",
-        "",
-    ]
-
+    lines = [f"Bonjour {first_name},", "", f"Voici tes appels de service pour le {readable_date} :", ""]
     for call in calls:
         dt = call.get("scheduled_datetime", "") or ""
         time_str = dt[11:16] if len(dt) >= 16 else "??"
         client  = call.get("client_name") or "Client inconnu"
         address = call.get("address")    or "Adresse non précisée"
         goal    = call.get("intervention_goal") or "Non précisé"
-        lines += [
-            f"🕒 {time_str} — {client}",
-            f"   📍 {address}",
-            f"   🎯 {goal}",
-            "",
-        ]
-
-    lines += ["Les fiches PDF sont aussi disponibles dans D-Tools (Ceci est un courriel auto généré - veuillez répondre au service@groupecs.com si nécessaire)", "", "Bonne journée."]
+        lines += [f"🕒 {time_str} — {client}", f"   📍 {address}", f"   🎯 {goal}", ""]
+    lines += ["Les fiches PDF sont aussi disponibles dans D-Tools.", "Bonne journée."]
     return "\n".join(lines)
 
 
@@ -97,12 +86,20 @@ def send_dispatch_emails(
         cc_email_str = (tech_emails_cc or {}).get(tech)
         cc_list = []
         if cc_email_str and cc_email_str.strip():
-            import re
             emails = [e.strip() for e in re.split(r"[,;]+", cc_email_str) if e.strip()]
             for e in emails:
                 cc_list.append({"email": e})
 
-        email_text = build_dispatch_email(tech, calls, date_str)
+        # Construire la liste d'appels pour les templates qui itèrent
+        calls_data = []
+        for c in calls:
+            dt = c.get("scheduled_datetime", "") or ""
+            calls_data.append({
+                "time_str":          dt[11:16] if len(dt) >= 16 else "??",
+                "client_name":       c.get("client_name") or "Client",
+                "address":           c.get("address") or "",
+                "intervention_goal": c.get("intervention_goal") or "",
+            })
 
         # Construire les pièces jointes PDF
         attachments = []
@@ -114,9 +111,9 @@ def send_dispatch_emails(
             if payload:
                 b64 = encode_pdf_base64(payload)
                 if b64:
-                    client = safe_filename(call.get("client_name", "client"))
-                    sc     = safe_filename(call.get("service_call", "app"))
-                    fname  = f"interv_{client}_{sc}.pdf" if sc else f"interv_{client}.pdf"
+                    client_fname = safe_filename(call.get("client_name", "client"))
+                    sc_fname     = safe_filename(call.get("service_call", "app"))
+                    fname  = f"interv_{client_fname}_{sc_fname}.pdf" if sc_fname else f"interv_{client_fname}.pdf"
                     attachments.append({"name": fname, "content": b64})
 
         first_name = tech.split()[0] if tech else "Technicien"
@@ -125,9 +122,10 @@ def send_dispatch_emails(
             "sender":      {"name": "Planification Intervention", "email": sender_email},
             "to":          [{"email": tech_email_str, "name": tech}],
             "params": {
-                "FIRSTNAME": first_name,
-                "DATE":      format_french_date(date_str),
-                "CONTENT":   email_text,
+                "first_name":    first_name,
+                "readable_date": format_french_date(date_str),
+                "call_count":    len(calls),
+                "calls":         calls_data,
             },
         }
         if cc_list:
