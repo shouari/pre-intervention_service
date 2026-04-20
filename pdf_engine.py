@@ -11,11 +11,12 @@ from utils import clean_text, split_lines
 
 try:
     from reportlab.lib import colors
+    from reportlab.lib.colors import HexColor
     from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import mm
     from reportlab.platypus import (
-        HRFlowable, ListFlowable, ListItem, Paragraph,
+        HRFlowable, KeepTogether, Paragraph,
         SimpleDocTemplate, Spacer, Table, TableStyle,
     )
     REPORTLAB_AVAILABLE = True
@@ -30,18 +31,11 @@ def markdown_to_reportlab(text: str) -> str:
     import re
     if not text:
         return "—"
-    # Escaper les caractères spéciaux HTML que Paragraph pourrait mal interpréter
     text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    # Rétablir les tags qu'on veut utiliser
     text = text.replace("&lt;br/&gt;", "<br/>").replace("&lt;b&gt;", "<b>").replace("&lt;/b&gt;", "</b>").replace("&lt;i&gt;", "<i>").replace("&lt;/i&gt;", "</i>")
-
-    # Bold **text**
     text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
-    # Italic *text*
     text = re.sub(r"\*(.*?)\*", r"<i>\1</i>", text)
-    # Bullets - item
     text = re.sub(r"^(\s*)-\s+", r"\1• ", text, flags=re.MULTILINE)
-    # Line breaks
     text = text.replace("\n", "<br/>")
     return text
 
@@ -116,87 +110,237 @@ def generate_pdf(payload: Dict[str, Any]) -> bytes:
     if not REPORTLAB_AVAILABLE:
         raise RuntimeError("ReportLab n'est pas installé (pip install reportlab).")
 
+    # Brand palette
+    NAVY  = HexColor("#0D1B2A")
+    RED   = HexColor("#E8312A")
+    LGRAY = HexColor("#F7F8FA")
+    MGRAY = HexColor("#EAEDF0")
+    DGRAY = HexColor("#9AAABB")
+    WHITE = colors.white
+
+    L_MARGIN = R_MARGIN = 18 * mm
+    T_MARGIN = 30 * mm   # room for header band
+    B_MARGIN = 22 * mm   # room for footer
+    CW = A4[0] - L_MARGIN - R_MARGIN  # content width
+
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,
-        leftMargin=18 * mm, rightMargin=18 * mm,
-        topMargin=16 * mm, bottomMargin=16 * mm,
+        leftMargin=L_MARGIN, rightMargin=R_MARGIN,
+        topMargin=T_MARGIN,  bottomMargin=B_MARGIN,
     )
 
-    styles   = getSampleStyleSheet()
-    heading2 = ParagraphStyle("h2", parent=styles["Heading2"], fontSize=11, spaceAfter=3, spaceBefore=10)
-    body     = ParagraphStyle("body", parent=styles["BodyText"], fontName="Helvetica", fontSize=9.5, leading=13, spaceAfter=4)
-    small    = ParagraphStyle("small", parent=body, fontSize=8.5, leading=11, spaceAfter=2)
-    label    = ParagraphStyle("label", parent=body, fontName="Helvetica-Bold", fontSize=9.5)
+    # ── Typography ────────────────────────────────────────────
+    body = ParagraphStyle(
+        "cs_body", fontName="Helvetica", fontSize=9.5,
+        leading=14, spaceAfter=3, textColor=HexColor("#1A2533"),
+    )
+    body_bold = ParagraphStyle(
+        "cs_body_bold", fontName="Helvetica-Bold", fontSize=9.5,
+        leading=14, spaceAfter=3, textColor=HexColor("#1A2533"),
+    )
+    title_style = ParagraphStyle(
+        "cs_title", fontName="Helvetica-Bold", fontSize=20,
+        leading=24, textColor=NAVY, spaceAfter=4,
+    )
+    subtitle_style = ParagraphStyle(
+        "cs_subtitle", fontName="Helvetica", fontSize=10,
+        leading=14, textColor=DGRAY, spaceAfter=6,
+    )
+    section_style = ParagraphStyle(
+        "cs_section", fontName="Helvetica-Bold", fontSize=10,
+        leading=14, textColor=NAVY,
+    )
+    lbl_style = ParagraphStyle(
+        "cs_lbl", fontName="Helvetica-Bold", fontSize=9.5,
+        leading=14, textColor=NAVY,
+    )
 
     mandat    = payload["mandat"]
     probleme  = payload["probleme"]
     technique = payload["technique"]
     reflexion = payload["reflexion"]
 
-    story = [
-        Paragraph("Fiche d'intervention", styles["Title"]),
-        Spacer(1, 4),
-        HRFlowable(width="100%", thickness=1, color="#cccccc"),
-        Spacer(1, 6),
-    ]
+    # ── Per-page chrome (header band + footer) ────────────────
+    def draw_chrome(canvas, doc):
+        canvas.saveState()
+        w, h = A4
 
-    mandat_rows = [
-        ["Client",      mandat["client_name"] or "—"],
-        ["Appel #",     mandat.get("service_call", "") or "—"],
-        ["Adresse",     mandat["address"] or "—"],
-        ["Contact",     mandat["contact_name"] or "—"],
-        ["Téléphone",   mandat["contact_phone"] or "—"],
-        ["Date / heure", mandat["scheduled_datetime"] or "—"],
-        ["Technicien",  mandat["assigned_technician"] or "—"],
-    ]
-    tbl = Table(
-        [[Paragraph(f"<b>{r[0]}</b>", body), Paragraph(r[1], body)] for r in mandat_rows],
-        colWidths=[42 * mm, None], hAlign="LEFT",
+        # Header: dark band
+        canvas.setFillColor(NAVY)
+        canvas.rect(0, h - 22 * mm, w, 22 * mm, fill=1, stroke=0)
+        # Red accent line at bottom of header
+        canvas.setFillColor(RED)
+        canvas.rect(0, h - 22 * mm, w, 1.5, fill=1, stroke=0)
+        # Header: company name
+        canvas.setFont("Helvetica-Bold", 10)
+        canvas.setFillColor(WHITE)
+        canvas.drawString(L_MARGIN, h - 11 * mm, "GROUPE CS")
+        # Header: document type
+        canvas.setFont("Helvetica", 8)
+        canvas.setFillColor(HexColor("#8A99AA"))
+        canvas.drawString(L_MARGIN, h - 16.5 * mm, "Fiche de pré-intervention")
+        # Header: page number (right)
+        canvas.setFont("Helvetica", 8)
+        canvas.setFillColor(HexColor("#C8D5E4"))
+        canvas.drawRightString(w - R_MARGIN, h - 13.5 * mm, f"Page {doc.page}")
+
+        # Footer: light band
+        canvas.setFillColor(LGRAY)
+        canvas.rect(0, 0, w, 14 * mm, fill=1, stroke=0)
+        canvas.setFillColor(MGRAY)
+        canvas.rect(0, 14 * mm, w, 0.5, fill=1, stroke=0)
+        canvas.setFont("Helvetica", 7.5)
+        canvas.setFillColor(DGRAY)
+        canvas.drawString(L_MARGIN, 5 * mm, "Groupe CS — Document confidentiel")
+        canvas.drawRightString(w - R_MARGIN, 5 * mm, f"Page {doc.page}")
+
+        canvas.restoreState()
+
+    # ── Helpers ───────────────────────────────────────────────
+    def section_header(title: str) -> Table:
+        t = Table([[Paragraph(title, section_style)]], colWidths=[CW])
+        t.setStyle(TableStyle([
+            ("LINEBEFORE",    (0, 0), (0, -1), 3,   RED),
+            ("BACKGROUND",    (0, 0), (-1, -1),      LGRAY),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
+            ("TOPPADDING",    (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        return t
+
+    bullet_style = ParagraphStyle(
+        "cs_bullet", fontName="Helvetica", fontSize=9.5,
+        leading=14, leftIndent=14, firstLineIndent=-10,
+        spaceAfter=2, textColor=HexColor("#1A2533"),
     )
-    tbl.setStyle(TableStyle([
-        ("VALIGN",       (0, 0), (-1, -1), "TOP"),
-        ("ROWBACKGROUNDS",(0, 0), (-1, -1), [colors.HexColor("#f5f5f5"), colors.white]),
-        ("LEFTPADDING",  (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING",   (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING",(0, 0), (-1, -1), 3),
-        ("LINEBELOW",    (0, -1), (-1, -1), 0.5, colors.HexColor("#dddddd")),
-    ]))
-    story += [tbl, Spacer(1, 5), Paragraph("<b>Objectif :</b>", body)]
-    story.append(Paragraph(markdown_to_reportlab(mandat["intervention_goal"]), body))
-    story.append(Spacer(1, 8))
 
-    def add_markdown_section(title: str, text: str) -> None:
+    def bullet_list(text: str) -> List[Paragraph]:
+        lines = split_lines(text)
+        return [
+            Paragraph(
+                f'<font color="#E8312A">\u2022</font> {markdown_to_reportlab(ln.lstrip("•- "))}',
+                bullet_style,
+            )
+            for ln in lines
+        ]
+
+    def add_section(title: str, text: str, as_bullets: bool = True) -> None:
         if not clean_text(text):
             return
-        story.append(Paragraph(title, heading2))
-        story.append(Paragraph(markdown_to_reportlab(text), body))
-        story.append(Spacer(1, 4))
+        lines = split_lines(text)
+        block: List[Any] = [section_header(title), Spacer(1, 5)]
+        if as_bullets and len(lines) > 1:
+            block.extend(bullet_list(text))
+        else:
+            block.append(Paragraph(markdown_to_reportlab(text), body))
+        block.append(Spacer(1, 8))
+        story.append(KeepTogether(block))
 
-    add_markdown_section("Problème rapporté", probleme.get("reported_issue", ""))
-    add_markdown_section("Contexte technique", technique.get("history_context", ""))
+    story: List[Any] = []
 
-    story.append(Paragraph("Environnement technique", heading2))
-    story.append(Paragraph(
-        f"<b>Systèmes :</b> {', '.join(technique['systems_present']) if technique['systems_present'] else '—'}",
-        body,
-    ))
-    if clean_text(technique["attempts_summary"]):
-        story.append(Paragraph("<b>Tentatives :</b>", label))
-        story.append(Paragraph(markdown_to_reportlab(technique["attempts_summary"]), body))
-    if clean_text(technique["site_constraints"]):
-        story.append(Paragraph(markdown_to_reportlab(f"**Contraintes :** {technique['site_constraints']}"), body))
-    story.append(Spacer(1, 6))
+    # ── Document title block ──────────────────────────────────
+    client_name = mandat.get("client_name") or "—"
+    sc          = mandat.get("service_call") or ""
+    dt          = mandat.get("scheduled_datetime") or ""
+    dt_display  = dt[:16] if len(dt) >= 10 else dt
 
-    add_markdown_section("Références utiles",        technique["references_utiles"])
-    add_markdown_section("Risques identifiés",        reflexion["risks"])
-    add_markdown_section("Vérifications prioritaires", reflexion["priority_checks"])
-    add_markdown_section("Plan d'action",             reflexion["action_plan"])
-    add_markdown_section("Hypothèses",               reflexion["hypotheses"])
-    add_markdown_section("Outils / Stock",           reflexion["tools_access_needed"])
+    story.append(Paragraph(client_name, title_style))
+    sub_parts = []
+    if sc:
+        sub_parts.append(f"Appel #{sc}")
+    if dt_display:
+        sub_parts.append(dt_display)
+    if sub_parts:
+        story.append(Paragraph("  ·  ".join(sub_parts), subtitle_style))
+    story.append(HRFlowable(width="100%", thickness=1, color=MGRAY, spaceAfter=6))
+    story.append(Spacer(1, 4))
 
-    doc.build(story)
+    # ── Mandat info table ─────────────────────────────────────
+    mandat_rows = [
+        ("Adresse",      mandat.get("address")              or ""),
+        ("Contact",      mandat.get("contact_name")         or ""),
+        ("Téléphone",    mandat.get("contact_phone")        or ""),
+        ("Date / heure", mandat.get("scheduled_datetime")   or ""),
+        ("Technicien",   mandat.get("assigned_technician")  or ""),
+    ]
+    mandat_rows = [(k, v) for k, v in mandat_rows if clean_text(str(v))]
+
+    if mandat_rows:
+        tbl_data = [
+            [Paragraph(f"<b>{k}</b>", lbl_style), Paragraph(str(v), body)]
+            for k, v in mandat_rows
+        ]
+        tbl = Table(tbl_data, colWidths=[38 * mm, CW - 38 * mm], hAlign="LEFT")
+        tbl.setStyle(TableStyle([
+            ("VALIGN",         (0, 0), (-1, -1), "TOP"),
+            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [LGRAY, WHITE]),
+            ("LEFTPADDING",    (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING",   (0, 0), (-1, -1), 8),
+            ("TOPPADDING",     (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING",  (0, 0), (-1, -1), 4),
+            ("LINEBEFORE",     (0, 0), (0,  -1), 2, NAVY),
+        ]))
+        story.append(tbl)
+        story.append(Spacer(1, 8))
+
+    # ── Objectif (highlighted box) ────────────────────────────
+    goal = clean_text(mandat.get("intervention_goal") or "")
+    if goal:
+        obj_style = ParagraphStyle(
+            "cs_obj", fontName="Helvetica", fontSize=10,
+            leading=15, textColor=NAVY,
+        )
+        obj_tbl = Table(
+            [[Paragraph(f"<b>Objectif</b><br/>{markdown_to_reportlab(goal)}", obj_style)]],
+            colWidths=[CW],
+        )
+        obj_tbl.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, -1),      HexColor("#FDF3F2")),
+            ("LINEBEFORE",    (0, 0), (0,  -1), 3,   RED),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 12),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 12),
+            ("TOPPADDING",    (0, 0), (-1, -1), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ]))
+        story.append(obj_tbl)
+        story.append(Spacer(1, 12))
+
+    # ── Problème + contexte ───────────────────────────────────
+    add_section("Problème rapporté",   probleme.get("reported_issue", ""),    as_bullets=False)
+    add_section("Contexte technique",  technique.get("history_context", ""),  as_bullets=False)
+
+    # ── Environnement technique ───────────────────────────────
+    systems     = technique.get("systems_present") or []
+    attempts    = technique.get("attempts_summary") or ""
+    constraints = technique.get("site_constraints") or ""
+
+    if systems or clean_text(attempts) or clean_text(constraints):
+        env: List[Any] = [section_header("Environnement technique"), Spacer(1, 5)]
+        if systems:
+            env.append(Paragraph(f"<b>Systèmes :</b> {', '.join(systems)}", body))
+        if clean_text(attempts):
+            env.append(Paragraph("<b>Tentatives et résultats :</b>", body_bold))
+            bl = bullet_list(attempts)
+            if bl:
+                env.extend(bl)
+            else:
+                env.append(Paragraph(markdown_to_reportlab(attempts), body))
+        if clean_text(constraints):
+            env.append(Paragraph(f"<b>Contraintes :</b> {constraints}", body))
+        env.append(Spacer(1, 8))
+        story.append(KeepTogether(env))
+
+    # ── Remaining sections ────────────────────────────────────
+    add_section("Références utiles",          technique.get("references_utiles", ""),    as_bullets=True)
+    add_section("Risques identifiés",          reflexion.get("risks", ""),               as_bullets=True)
+    add_section("Vérifications prioritaires",  reflexion.get("priority_checks", ""),    as_bullets=True)
+    add_section("Plan d'action",               reflexion.get("action_plan", ""),         as_bullets=True)
+    add_section("Hypothèses",                 reflexion.get("hypotheses", ""),           as_bullets=True)
+    add_section("Outils / Stock à ramasser",  reflexion.get("tools_access_needed", ""),  as_bullets=True)
+
+    doc.build(story, onFirstPage=draw_chrome, onLaterPages=draw_chrome)
     return buffer.getvalue()
 
 
