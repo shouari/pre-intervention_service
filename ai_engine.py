@@ -65,8 +65,8 @@ CONTRAINTE IMPORTANTE
 
 TÂCHE — Générer en JSON strict :
 
-1. hypotheses (max 5) — classées par probabilité (high/medium/low), basées sur causes fréquentes terrain
-2. action_plan — étapes concrètes et testables sur place, dans l'ordre
+1. hypotheses (max 5) — classées par probabilité (high/medium/low), basées sur causes fréquentes terrain. Ne pas numéroter les éléments.
+2. action_plan — étapes concrètes et testables sur place, dans l'ordre. Ne pas ajouter de préfixe "Étape X".
 3. vigilance_points — erreurs fréquentes et risques
 4. tools_required — matériel / logiciels nécessaires
 5. sources — documentation fabricant ou standards (pas de liens inventés)
@@ -127,7 +127,7 @@ def run_ai_analysis(payload: Dict[str, Any], doc_text: str = "") -> Dict[str, An
     action_plan = []
     for a in parsed.get("action_plan", []):
         if isinstance(a, dict):
-            action_plan.append(f"Étape {a.get('step', '?')}: {a.get('action', '')} → {a.get('expected_result', '')}")
+            action_plan.append(f"{a.get('action', '')} → {a.get('expected_result', '')}")
         else:
             action_plan.append(str(a))
 

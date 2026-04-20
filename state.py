@@ -138,11 +138,16 @@ def load_payload_into_state(payload: Dict[str, Any], pre_id: Optional[int] = Non
     st.session_state.references_utiles = technique.get("references_utiles", "")
     st.session_state.work_docs         = []
 
-    st.session_state.risks_text       = "\n".join(reflexion.get("risks", []))
-    st.session_state.hypotheses       = "\n".join(reflexion.get("hypotheses", []))
-    st.session_state.priority_checks  = "\n".join(reflexion.get("priority_checks", []))
-    st.session_state.action_plan      = "\n".join(reflexion.get("action_plan", []))
-    st.session_state.tools_access_needed = "\n".join(reflexion.get("tools_access_needed", []))
+    def to_str(val: Any) -> str:
+        if isinstance(val, list):
+            return "\n".join(str(x) for x in val)
+        return str(val or "")
+
+    st.session_state.risks_text       = to_str(reflexion.get("risks"))
+    st.session_state.hypotheses       = to_str(reflexion.get("hypotheses"))
+    st.session_state.priority_checks  = to_str(reflexion.get("priority_checks"))
+    st.session_state.action_plan      = to_str(reflexion.get("action_plan"))
+    st.session_state.tools_access_needed = to_str(reflexion.get("tools_access_needed"))
     st.session_state.confidence_level = reflexion.get("confidence_level", "Moyen")
 
     st.session_state.ai_summary       = ai_output.get("summary", "")
@@ -200,11 +205,11 @@ def build_payload() -> Dict[str, Any]:
             "history_context":  clean_text(st.session_state.get("history_context", "")),
         },
         "reflexion": {
-            "risks":             normalize_risks(),
-            "hypotheses":        split_lines(st.session_state.hypotheses),
-            "priority_checks":   split_lines(st.session_state.priority_checks),
-            "action_plan":       split_lines(st.session_state.action_plan),
-            "tools_access_needed": split_lines(st.session_state.tools_access_needed),
+            "risks":             clean_text(st.session_state.risks_text),
+            "hypotheses":        clean_text(st.session_state.hypotheses),
+            "priority_checks":   clean_text(st.session_state.priority_checks),
+            "action_plan":       clean_text(st.session_state.action_plan),
+            "tools_access_needed": clean_text(st.session_state.tools_access_needed),
             "confidence_level":  st.session_state.confidence_level,
         },
         "ai_output": {

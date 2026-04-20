@@ -41,20 +41,20 @@ def build_dispatch_email(tech: str, calls: List[Dict[str, Any]], date_str: str) 
         "",
     ]
 
-    for i, call in enumerate(calls, 1):
+    for call in calls:
         dt = call.get("scheduled_datetime", "") or ""
         time_str = dt[11:16] if len(dt) >= 16 else "??"
         client  = call.get("client_name") or "Client inconnu"
         address = call.get("address")    or "Adresse non précisée"
         goal    = call.get("intervention_goal") or "Non précisé"
         lines += [
-            f"{i}. {time_str} — {client}",
+            f"🕒 {time_str} — {client}",
             f"   📍 {address}",
             f"   🎯 {goal}",
             "",
         ]
 
-    lines += ["Les fiches PDF sont aussi disponibles dans D-Tools", "", "Bonne journée."]
+    lines += ["Les fiches PDF sont aussi disponibles dans D-Tools (Ceci est un courriel auto généré - veuillez répondre au service@groupecs.com si nécessaire)", "", "Bonne journée."]
     return "\n".join(lines)
 
 

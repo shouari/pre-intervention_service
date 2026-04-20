@@ -118,7 +118,7 @@ with tab_prep:
 
     with left:
         # ── 1) Mandat ──────────────────────────────────────
-        with st.expander("1) Mandat", expanded=True):
+        with st.expander("Mandat", expanded=True):
             a, b = st.columns(2)
             with a:
                 st.text_input("Client *", key="client_name", placeholder="Nom du client")
@@ -137,7 +137,7 @@ with tab_prep:
             )
 
         # ── 2) Problème ────────────────────────────────────
-        with st.expander("2) Problème", expanded=True):
+        with st.expander("Problème", expanded=True):
             st.text_area(
                 "Problème rapporté *", key="reported_issue",
                 placeholder="Description telle que rapportée par le client — sans interprétation.",
@@ -150,7 +150,7 @@ with tab_prep:
             )
 
         # ── 3) Environnement technique ─────────────────────
-        with st.expander("3) Environnement technique", expanded=True):
+        with st.expander("Environnement technique", expanded=True):
             st.multiselect("Systèmes présents *", SYSTEM_OPTIONS, key="systems_present")
             if "Autre" in st.session_state.systems_present:
                 st.text_input("Préciser le système 'Autre'", key="other_system")
@@ -165,7 +165,7 @@ with tab_prep:
             )
 
         # ── 4) Références (optionnel) ──────────────────────
-        with st.expander("4) Références et documents", expanded=False):
+        with st.expander("Références et documents", expanded=False):
             st.text_area(
                 "Chemins / références utiles", key="references_utiles",
                 placeholder="Un chemin NAS, lien, référence — une par ligne",
@@ -181,7 +181,7 @@ with tab_prep:
                 st.caption(f"📎 {f.name}")
 
         # ── 5) Réflexion structured ────────────────────────
-        with st.expander("5) Réflexion structurée", expanded=True):
+        with st.expander("Réflexion structurée", expanded=True):
             st.text_area(
                 "Hypothèses (une par ligne)", key="hypotheses",
                 placeholder="Panne d'alimentation du switch\nConfig VLAN incorrecte\nFirmware obsolète…",
@@ -209,7 +209,7 @@ with tab_prep:
             )
 
         # ── 6) Assistance IA ───────────────────────────────
-        with st.expander("6) Assistance IA 🤖", expanded=False):
+        with st.expander("Assistance IA 🤖", expanded=False):
             st.caption("L'analyse IA est non-confidentielle et ne remplace pas le jugement humain.")
             from utils import extract_text_from_uploaded_files
             doc_text = extract_text_from_uploaded_files(st.session_state.work_docs)
@@ -246,8 +246,8 @@ with tab_prep:
                 with ai2:
                     if st.session_state.ai_action_plan:
                         st.markdown("**🔧 Plan d'action suggéré**")
-                        for i, item in enumerate(split_lines(st.session_state.ai_action_plan), 1):
-                            st.markdown(f"{i}. {item}")
+                        for item in split_lines(st.session_state.ai_action_plan):
+                            st.markdown(f"- {item}")
                     if st.session_state.ai_tools_access_needed:
                         st.markdown("**🧰 Outils requis**")
                         for item in st.session_state.ai_tools_access_needed:

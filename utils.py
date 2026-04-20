@@ -17,8 +17,8 @@ def clean_text(value: Any) -> str:
 
 
 def split_lines(value: str) -> List[str]:
-    """Découpe un bloc de texte en lignes non-vides, en retirant les puces courantes."""
-    return [line.strip("-• \t") for line in (value or "").splitlines() if line.strip()]
+    """Découpe un bloc de texte en lignes non-vides."""
+    return [line.strip() for line in (value or "").splitlines() if line.strip()]
 
 
 def safe_filename(value: str) -> str:

@@ -25,6 +25,27 @@ except ImportError:
 
 # ─── Markdown ──────────────────────────────────────────────
 
+def markdown_to_reportlab(text: str) -> str:
+    """Traduit quelques balises Markdown simples en tags ReportLab (Paragraph)."""
+    import re
+    if not text:
+        return "—"
+    # Escaper les caractères spéciaux HTML que Paragraph pourrait mal interpréter
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    # Rétablir les tags qu'on veut utiliser
+    text = text.replace("&lt;br/&gt;", "<br/>").replace("&lt;b&gt;", "<b>").replace("&lt;/b&gt;", "</b>").replace("&lt;i&gt;", "<i>").replace("&lt;/i&gt;", "</i>")
+
+    # Bold **text**
+    text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
+    # Italic *text*
+    text = re.sub(r"\*(.*?)\*", r"<i>\1</i>", text)
+    # Bullets - item
+    text = re.sub(r"^(\s*)-\s+", r"\1• ", text, flags=re.MULTILINE)
+    # Line breaks
+    text = text.replace("\n", "<br/>")
+    return text
+
+
 def report_markdown(payload: Dict[str, Any]) -> str:
     mandat    = payload["mandat"]
     probleme  = payload["probleme"]
@@ -47,12 +68,12 @@ def report_markdown(payload: Dict[str, Any]) -> str:
         row("🔧", "Technicien",  mandat["assigned_technician"]),
         "",
         "**🎯 Objectif :**",
+        mandat["intervention_goal"] or "—",
+        "",
+        "## 🔍 Problème rapporté",
+        probleme.get("reported_issue") or "—",
+        "",
     ]
-    goal_lines = split_lines(mandat["intervention_goal"])
-    lines += [f"- {g}" for g in goal_lines] if goal_lines else ["—"]
-    lines.append("")
-
-    lines += ["## 🔍 Problème rapporté", probleme.get("reported_issue") or "—", ""]
 
     history = technique.get("history_context") or ""
     if clean_text(history):
@@ -67,24 +88,24 @@ def report_markdown(payload: Dict[str, Any]) -> str:
     lines.append("")
 
     if clean_text(technique["references_utiles"]):
-        lines += ["## 📁 Références utiles"] + [f"- {x}" for x in split_lines(technique["references_utiles"])] + [""]
+        lines += ["## 📁 Références utiles", technique["references_utiles"], ""]
 
-    if reflexion["risks"]:
-        lines += ["## ⚠️ Risques identifiés"] + [f"- {r}" for r in reflexion["risks"]] + [""]
+    if clean_text(reflexion.get("risks")):
+        lines += ["## ⚠️ Risques identifiés", reflexion["risks"], ""]
 
     lines.append("## ✅ Vérifications prioritaires")
-    lines += [f"- {item}" for item in reflexion["priority_checks"]] if reflexion["priority_checks"] else ["—"]
+    lines.append(reflexion.get("priority_checks") or "—")
     lines.append("")
 
     lines.append("## 🔧 Plan d'action")
-    lines += [f"{i}. {item}" for i, item in enumerate(reflexion["action_plan"], 1)] if reflexion["action_plan"] else ["—"]
+    lines.append(reflexion.get("action_plan") or "—")
     lines.append("")
 
-    if reflexion["hypotheses"]:
-        lines += ["## 💡 Hypothèses"] + [f"- {h}" for h in reflexion["hypotheses"]] + [""]
+    if clean_text(reflexion.get("hypotheses")):
+        lines += ["## 💡 Hypothèses", reflexion["hypotheses"], ""]
 
-    if reflexion["tools_access_needed"]:
-        lines += ["## 🧰 Outils / Stock"] + [f"- {item}" for item in reflexion["tools_access_needed"]] + [""]
+    if clean_text(reflexion.get("tools_access_needed")):
+        lines += ["## 🧰 Outils / Stock", reflexion["tools_access_needed"], ""]
 
     return "\n".join(lines)
 
@@ -143,30 +164,18 @@ def generate_pdf(payload: Dict[str, Any]) -> bytes:
         ("LINEBELOW",    (0, -1), (-1, -1), 0.5, colors.HexColor("#dddddd")),
     ]))
     story += [tbl, Spacer(1, 5), Paragraph("<b>Objectif :</b>", body)]
-    goal_lines = split_lines(mandat["intervention_goal"])
-    if goal_lines:
-        story.append(ListFlowable([ListItem(Paragraph(g, small)) for g in goal_lines], bulletType="bullet", leftIndent=14))
-    else:
-        story.append(Paragraph("—", body))
+    story.append(Paragraph(markdown_to_reportlab(mandat["intervention_goal"]), body))
     story.append(Spacer(1, 8))
 
-    def add_section(title: str, text: str) -> None:
-        story.append(Paragraph(title, heading2))
-        story.append(Paragraph((text or "—").replace("\n", "<br/>"), body))
-        story.append(Spacer(1, 4))
-
-    def add_bullets(title: str, items: List[str]) -> None:
-        if not items:
+    def add_markdown_section(title: str, text: str) -> None:
+        if not clean_text(text):
             return
         story.append(Paragraph(title, heading2))
-        story.append(ListFlowable([ListItem(Paragraph(item, small)) for item in items], bulletType="bullet", leftIndent=14))
+        story.append(Paragraph(markdown_to_reportlab(text), body))
         story.append(Spacer(1, 4))
 
-    add_section("Problème rapporté", probleme.get("reported_issue", ""))
-
-    history = technique.get("history_context", "")
-    if clean_text(history):
-        add_section("Contexte technique", history)
+    add_markdown_section("Problème rapporté", probleme.get("reported_issue", ""))
+    add_markdown_section("Contexte technique", technique.get("history_context", ""))
 
     story.append(Paragraph("Environnement technique", heading2))
     story.append(Paragraph(
@@ -175,17 +184,17 @@ def generate_pdf(payload: Dict[str, Any]) -> bytes:
     ))
     if clean_text(technique["attempts_summary"]):
         story.append(Paragraph("<b>Tentatives :</b>", label))
-        story.append(Paragraph(technique["attempts_summary"].replace("\n", "<br/>"), body))
+        story.append(Paragraph(markdown_to_reportlab(technique["attempts_summary"]), body))
     if clean_text(technique["site_constraints"]):
-        story.append(Paragraph(f"<b>Contraintes :</b> {technique['site_constraints']}", body))
+        story.append(Paragraph(markdown_to_reportlab(f"**Contraintes :** {technique['site_constraints']}"), body))
     story.append(Spacer(1, 6))
 
-    add_bullets("Références utiles",        split_lines(technique["references_utiles"]))
-    add_bullets("Risques identifiés",        reflexion["risks"])
-    add_bullets("Vérifications prioritaires", reflexion["priority_checks"])
-    add_bullets("Plan d'action",             reflexion["action_plan"])
-    add_bullets("Hypothèses",               reflexion["hypotheses"])
-    add_bullets("Outils / Stock",           reflexion["tools_access_needed"])
+    add_markdown_section("Références utiles",        technique["references_utiles"])
+    add_markdown_section("Risques identifiés",        reflexion["risks"])
+    add_markdown_section("Vérifications prioritaires", reflexion["priority_checks"])
+    add_markdown_section("Plan d'action",             reflexion["action_plan"])
+    add_markdown_section("Hypothèses",               reflexion["hypotheses"])
+    add_markdown_section("Outils / Stock",           reflexion["tools_access_needed"])
 
     doc.build(story)
     return buffer.getvalue()

@@ -35,6 +35,7 @@ FOLLOW_UP_OPTIONS = ["Non", "Oui"]
 # Source unique de vérité. Modifier ici pour ajouter/retirer un technicien.
 TECHNICIANS: list[dict] = [
     {"first_name": "Alexandre", "last_name": "Langlois",         "email": "alanglois@groupecs.com"},
+    {"first_name": "Gregory", "last_name": "Collas",         "email": "gcollas@groupecs.com"},
     {"first_name": "Blaise",    "last_name": "Cyr",              "email": "bdeschampscyr@groupecs.com"},
     {"first_name": "Matthieu",  "last_name": "Chizelle",         "email": "mchizelle@groupecs.com"},
     {"first_name": "Frederic",  "last_name": "Chabot",           "email": "fchabot@groupecs.com"},
