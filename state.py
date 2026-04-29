@@ -5,18 +5,18 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import streamlit as st
 
-from config import SYSTEM_OPTIONS, RESOLUTION_STATUS_OPTIONS, FOLLOW_UP_OPTIONS, TECHNICIAN_LIST
+from config import SYSTEM_OPTIONS
 from database import (
     get_pre_intervention,
     get_real_intervention,
     save_pre_intervention,
     upsert_real_intervention,
 )
-from utils import clean_text, split_lines, format_datetime, normalize_systems, normalize_risks
+from utils import clean_text, split_lines, format_datetime, normalize_systems
 
 
 # ─── Initialisation ────────────────────────────────────────
@@ -57,6 +57,8 @@ def init_state() -> None:
         "_buf_tools_access_needed": None,
         # Sortie IA
         "ai_summary":               "",
+        "ai_raisonnement":          "",
+        "ai_web_research":          "",
         "ai_action_plan":           "",
         "ai_hypotheses":            [],
         "ai_priority_checks":       [],

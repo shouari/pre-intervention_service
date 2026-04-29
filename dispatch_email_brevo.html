@@ -36,7 +36,7 @@
               GROUPE <span style="color:#E8312A;">CS</span>
             </p>
             <p style="margin:0;font-size:11px;color:#8A99AA;letter-spacing:1px;text-transform:uppercase;font-family:Arial,sans-serif;">
-              Répartition des appels &middot; Technicien de service
+              R&eacute;partition des appels &middot; Technicien de service
             </p>
           </td>
         </tr>
@@ -47,7 +47,7 @@
             <table cellpadding="0" cellspacing="0" border="0" role="presentation">
               <tr>
                 <td style="background-color:#0D1B2A;padding:5px 12px;">
-                  <span style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#FFFFFF;font-family:Arial,sans-serif;">Journée</span>
+                  <span style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#FFFFFF;font-family:Arial,sans-serif;">Journ&eacute;e</span>
                 </td>
                 <td style="padding-left:12px;">
                   <span style="font-size:15px;font-weight:600;color:#1A2533;font-family:Arial,sans-serif;">{{ params.readable_date }}</span>
@@ -57,15 +57,49 @@
           </td>
         </tr>
 
+        <!-- UPDATE BANNER (affiché seulement si mise à jour) -->
+        {% if params.is_update %}
+        <tr>
+          <td class="side-pad" style="background-color:#FFFBEB;padding:12px 40px;border-bottom:2px solid #F59E0B;">
+            <table cellpadding="0" cellspacing="0" border="0" role="presentation" width="100%">
+              <tr>
+                <td width="1" style="white-space:nowrap;">
+                  <table cellpadding="0" cellspacing="0" border="0" role="presentation">
+                    <tr>
+                      <td style="background-color:#D97706;padding:5px 12px;white-space:nowrap;">
+                        <span style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#FFFFFF;font-family:Arial,sans-serif;">
+                          &#128260;&nbsp;MISE &Agrave; JOUR &bull; Envoi #{{ params.send_number }}
+                        </span>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+                <td style="padding-left:14px;">
+                  <span style="font-size:13px;color:#92400E;font-family:Arial,sans-serif;line-height:1.5;">
+                    {{ params.changes_description }}
+                  </span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        {% endif %}
+
         <!-- GREETING -->
         <tr>
           <td class="side-pad" style="padding:32px 40px 0;">
             <p style="margin:0 0 8px 0;font-size:22px;font-weight:700;color:#0D1B2A;line-height:1.3;font-family:Arial,sans-serif;">
               Bonjour {{ params.first_name }} &#128075;
             </p>
+            {% if params.is_update %}
+            <p style="margin:0 0 24px 0;font-size:14px;color:#556678;line-height:1.6;font-family:Arial,sans-serif;">
+              Voici une <strong>mise &agrave; jour</strong> de tes appels de service pour la journ&eacute;e du {{ params.readable_date }}. La liste compl&egrave;te est ci-dessous &mdash; ce courriel remplace le pr&eacute;c&eacute;dent.
+            </p>
+            {% else %}
             <p style="margin:0 0 24px 0;font-size:14px;color:#556678;line-height:1.6;font-family:Arial,sans-serif;">
               Voici tes appels de service pour la journ&eacute;e du {{ params.readable_date }}. Les d&eacute;tails de chaque intervention sont list&eacute;s ci-dessous.
             </p>
+            {% endif %}
             <p style="margin:0 0 14px 0;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#9AAABB;font-family:Arial,sans-serif;">
               {{ params.call_count }} intervention(s) planifi&eacute;e(s)
             </p>
@@ -150,9 +184,12 @@
             <p style="margin:0 0 6px 0;font-size:14px;font-weight:600;color:#0D1B2A;font-family:Arial,sans-serif;">
               Bonne journ&eacute;e &#10024;
             </p>
-            <p style="margin:0;font-size:11px;color:#9AAABB;line-height:1.6;font-family:Arial,sans-serif;">
+            <p style="margin:0 0 8px 0;font-size:11px;color:#9AAABB;line-height:1.6;font-family:Arial,sans-serif;">
               Courriel g&eacute;n&eacute;r&eacute; automatiquement &ndash; ne pas r&eacute;pondre directement.<br>
               Pour toute question&nbsp;: <a href="mailto:service@groupecs.com" style="color:#1A6FE8;text-decoration:underline;">service@groupecs.com</a>
+            </p>
+            <p style="margin:0;font-size:10px;color:#C8D0DA;letter-spacing:0.5px;font-family:Arial,sans-serif;">
+              Dispatcher v{{ params.app_version }}
             </p>
           </td>
         </tr>

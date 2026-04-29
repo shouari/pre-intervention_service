@@ -10,8 +10,8 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
-from config import TECH_EMAIL_MAP
-from database import get_dispatch_for_day, log_dispatch
+from config import TECH_EMAIL_MAP, APP_VERSION
+from database import log_dispatch, get_last_dispatch_snapshot, get_dispatch_send_count
 from pdf_engine import encode_pdf_base64
 from utils import format_french_date, safe_filename
 
@@ -27,6 +27,52 @@ def _get_brevo_key() -> str:
 
 def _get_sender_email() -> str:
     return os.environ.get("BREVO_SENDER_EMAIL", "").strip(" \"'") or "no-reply@votredomaine.com"
+
+
+# ─── Helpers détection de mise à jour ──────────────────────
+
+def _build_snapshot(calls: List[Dict[str, Any]]) -> Dict[str, Any]:
+    summary = [
+        {
+            "id":           c.get("id"),
+            "updated_at":   c.get("updated_at", ""),
+            "client_name":  c.get("client_name", ""),
+            "service_call": c.get("service_call", ""),
+        }
+        for c in calls
+    ]
+    return {"call_ids": [c["id"] for c in summary], "calls_summary": summary}
+
+
+def _compute_changes(old: Dict[str, Any], new: Dict[str, Any]) -> Dict[str, List]:
+    old_by_id = {c["id"]: c for c in old.get("calls_summary", [])}
+    new_by_id = {c["id"]: c for c in new.get("calls_summary", [])}
+    added    = [c for id_, c in new_by_id.items() if id_ not in old_by_id]
+    removed  = [c for id_, c in old_by_id.items() if id_ not in new_by_id]
+    modified = [
+        new_by_id[id_] for id_ in new_by_id
+        if id_ in old_by_id and new_by_id[id_]["updated_at"] != old_by_id[id_]["updated_at"]
+    ]
+    return {"added": added, "removed": removed, "modified": modified}
+
+
+def _format_changes(changes: Dict[str, List]) -> str:
+    def _label(c: Dict) -> str:
+        name = c.get("client_name", "—")
+        sc   = c.get("service_call", "")
+        return f"{name} ({sc})" if sc else name
+
+    parts = []
+    if changes["added"]:
+        parts.append(f"{len(changes['added'])} ajout{'s' if len(changes['added']) > 1 else ''}: " +
+                     ", ".join(_label(c) for c in changes["added"]))
+    if changes["removed"]:
+        parts.append(f"{len(changes['removed'])} suppression{'s' if len(changes['removed']) > 1 else ''}: " +
+                     ", ".join(_label(c) for c in changes["removed"]))
+    if changes["modified"]:
+        parts.append(f"{len(changes['modified'])} modification{'s' if len(changes['modified']) > 1 else ''}: " +
+                     ", ".join(_label(c) for c in changes["modified"]))
+    return " · ".join(parts) if parts else "Contenu inchangé"
 
 
 # ─── Construction du texte email ───────────────────────────
@@ -71,6 +117,20 @@ def send_dispatch_emails(
     results: List[Dict[str, Any]] = []
 
     for tech, calls in grouped_dispatch.items():
+        # Détecter s'il s'agit d'une mise à jour
+        prev_snapshot  = get_last_dispatch_snapshot(tech, date_str)
+        new_snapshot   = _build_snapshot(calls)
+        send_count     = get_dispatch_send_count(tech, date_str)
+        is_update      = send_count > 0
+
+        if is_update and prev_snapshot:
+            changes             = _compute_changes(prev_snapshot, new_snapshot)
+            changes_description = _format_changes(changes)
+        elif is_update:
+            changes_description = "Détail des modifications non disponible pour cet envoi."
+        else:
+            changes_description = ""
+
         # Résoudre l'email destinataire
         tech_email_str = (tech_emails or {}).get(tech) or TECH_EMAIL_MAP.get(tech)
         
@@ -116,18 +176,25 @@ def send_dispatch_emails(
                     fname  = f"interv_{client_fname}_{sc_fname}.pdf" if sc_fname else f"interv_{client_fname}.pdf"
                     attachments.append({"name": fname, "content": b64})
 
-        first_name = tech.split()[0] if tech else "Technicien"
+        first_name  = tech.split()[0] if tech else "Technicien"
+        readable_dt = format_french_date(date_str)
         req_body: Dict[str, Any] = {
             "templateId":  10,
             "sender":      {"name": "Planification Intervention", "email": sender_email},
             "to":          [{"email": tech_email_str, "name": tech}],
             "params": {
-                "first_name":    first_name,
-                "readable_date": format_french_date(date_str),
-                "call_count":    len(calls),
-                "calls":         calls_data,
+                "first_name":           first_name,
+                "readable_date":        readable_dt,
+                "call_count":           len(calls),
+                "calls":                calls_data,
+                "is_update":            is_update,
+                "send_number":          send_count + 1,
+                "changes_description":  changes_description,
+                "app_version":          APP_VERSION,
             },
         }
+        if is_update:
+            req_body["subject"] = f"🔄 Mise à jour #{send_count + 1} — Appels de service du {readable_dt}"
         if cc_list:
             req_body["cc"] = cc_list
         if attachments:
@@ -137,7 +204,7 @@ def send_dispatch_emails(
             resp = requests.post(url, headers=headers, json=req_body, timeout=15)
             if resp.status_code in (200, 201, 202):
                 results.append({"tech": tech, "status": "success", "message": "Email envoyé avec succès."})
-                log_dispatch(tech, date_str, "Success")
+                log_dispatch(tech, date_str, "Success", json.dumps(new_snapshot, ensure_ascii=False))
             else:
                 msg = f"Erreur API ({resp.status_code}): {resp.text}"
                 results.append({"tech": tech, "status": "error", "message": msg})

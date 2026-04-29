@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import io
 import re
+import zipfile
 from datetime import datetime
 from typing import Any, List
 
@@ -59,6 +60,16 @@ def format_french_date(date_str: str) -> str:
 
 # ─── Documents ─────────────────────────────────────────────
 
+# Extensions traitées comme texte brut (aucune librairie requise)
+_TEXT_EXTENSIONS = (
+    ".txt", ".json", ".xml", ".csv", ".log", ".ini", ".cfg",
+    ".csp", ".usp", ".lua", ".lut", ".yaml", ".yml",
+)
+
+# Archives ZIP (formats propriétaires AV/réseau + zip générique)
+_ZIP_EXTENSIONS = (".zip", ".c4p", ".c4z", ".lpz", ".qsys", ".vtz", ".unf")
+
+
 def work_docs_summary(files: List[Any]) -> List[dict]:
     return [
         {"name": f.name, "type": getattr(f, "type", ""), "size": getattr(f, "size", None)}
@@ -66,8 +77,43 @@ def work_docs_summary(files: List[Any]) -> List[dict]:
     ]
 
 
+def _extract_from_zip(content: bytes, max_chars: int = 8000) -> str:
+    """Extrait le texte lisible d'une archive ZIP (projets Control4, Crestron, QSC, etc.)."""
+    TEXT_EXTS = (".xml", ".json", ".txt", ".csv", ".lua", ".csp", ".usp",
+                 ".log", ".ini", ".cfg", ".lut", ".yaml", ".yml")
+    PRIORITY_NAMES = {
+        "project.c4p", "project.xml", "driver.xml", "system.json",
+        "config.json", "project.json", "program.json",
+    }
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as zf:
+            names = zf.namelist()
+            priority = [n for n in names if n.split("/")[-1].lower() in PRIORITY_NAMES]
+            readable = [
+                n for n in names
+                if n not in priority
+                and any(n.lower().endswith(e) for e in TEXT_EXTS)
+                and not n.startswith("__")
+            ]
+            total = ""
+            for fname in priority + readable:
+                if len(total) >= max_chars:
+                    break
+                try:
+                    data = zf.read(fname)
+                    text = data.decode("utf-8", errors="ignore").strip()
+                    if text:
+                        remaining = max_chars - len(total)
+                        total += f"\n\n[{fname}]\n{text[:remaining]}"
+                except Exception:
+                    continue
+            return total.strip()
+    except zipfile.BadZipFile:
+        return ""
+
+
 def extract_text_from_uploaded_files(files: List[Any], max_chars_per_file: int = 4000) -> str:
-    """Extrait le texte brut des fichiers uploadés (txt, json, pdf, docx)."""
+    """Extrait le texte des fichiers uploadés : txt/json/xml/lua/csp, pdf, docx, archives ZIP (c4p, c4z, lpz, qsys…)."""
     excerpts: List[str] = []
     for f in files:
         name = f.name.lower()
@@ -77,7 +123,7 @@ def extract_text_from_uploaded_files(files: List[Any], max_chars_per_file: int =
             continue
 
         text = ""
-        if name.endswith(".txt") or name.endswith(".json"):
+        if any(name.endswith(e) for e in _TEXT_EXTENSIONS):
             text = content.decode("utf-8", errors="ignore")
         elif name.endswith(".pdf"):
             try:
@@ -93,10 +139,23 @@ def extract_text_from_uploaded_files(files: List[Any], max_chars_per_file: int =
                 text = "\n".join(p.text for p in doc.paragraphs)
             except Exception:
                 text = ""
+        elif any(name.endswith(e) for e in _ZIP_EXTENSIONS):
+            text = _extract_from_zip(content, max_chars=8000)
+        else:
+            # Tentative de décodage UTF-8 pour formats inconnus (ex: .smw Crestron)
+            try:
+                decoded = content.decode("utf-8", errors="ignore")
+                printable = sum(c.isprintable() or c in "\n\r\t" for c in decoded)
+                if decoded and printable / len(decoded) > 0.70:
+                    text = decoded
+            except Exception:
+                text = ""
 
         text = clean_text(text)
+        # Limite plus généreuse pour les archives (contenu multi-fichiers)
+        limit = 8000 if any(name.endswith(e) for e in _ZIP_EXTENSIONS) else max_chars_per_file
         if text:
-            excerpts.append(f"### Fichier: {f.name}\n{text[:max_chars_per_file]}")
+            excerpts.append(f"### Fichier: {f.name}\n{text[:limit]}")
     return "\n\n".join(excerpts)
 
 

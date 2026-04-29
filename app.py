@@ -17,7 +17,7 @@ except ImportError:
 import streamlit as st
 
 # ── Modules internes ───────────────────────────────────────
-from config import SYSTEM_OPTIONS, TECHNICIAN_LIST, TECH_EMAIL_MAP
+from config import SYSTEM_OPTIONS, TECHNICIAN_LIST, TECH_EMAIL_MAP, APP_VERSION
 from database import (
     DB_PATH, init_db,
     list_pre_interventions, get_pre_intervention,
@@ -28,9 +28,9 @@ from utils import clean_text, split_lines, safe_filename, format_french_date, co
 from state import (
     init_state, apply_injection_buffers, build_payload,
     load_historical_data_callback, reset_main_form_state_callback,
-    save_real_intervention_callback, save_pre_intervention_callback,
+    save_real_intervention_callback,
 )
-from ai_engine import run_ai_analysis, OPENAI_AVAILABLE
+from ai_engine import run_ai_analysis
 from pdf_engine import generate_pdf, report_markdown, REPORTLAB_AVAILABLE
 from dispatch import build_dispatch_email, send_dispatch_emails
 
@@ -73,7 +73,7 @@ apply_injection_buffers()
 # TOP BAR
 # =========================================================
 st.title("🛠️ Préparation d'appel de service")
-st.caption("Préparer · Briefer · Générer · Capitaliser")
+st.caption(f"Préparer · Briefer · Générer · Capitaliser &nbsp;|&nbsp; v{APP_VERSION}")
 
 if st.session_state.get("_success_msg"):
     st.success(st.session_state._success_msg)
@@ -144,9 +144,9 @@ with tab_prep:
                 height=120,
             )
             st.text_area(
-                "Contexte technique (optionnel)", key="history_context",
-                placeholder="Ex: réseau Unifi, ampli Denon, problème apparu après changement routeur",
-                height=90,
+                "Info pour IA 🤖", key="history_context",
+                placeholder="Hypothèses, pistes techniques, remplacements envisagés, contexte que le client t'a dit... L'IA utilise ce champ en priorité pour son analyse.",
+                height=110,
             )
 
         # ── 3) Environnement technique ─────────────────────
@@ -173,8 +173,13 @@ with tab_prep:
             )
             uploaded = st.file_uploader(
                 "Documents de travail (facultatif)",
-                type=["pdf", "txt", "docx", "json"],
+                type=[
+                    "pdf", "txt", "docx", "json", "xml", "csv", "log",
+                    "c4p", "c4z", "lpz", "qsys", "zip",
+                    "csp", "usp", "lua", "lut", "ini", "cfg", "yaml", "yml",
+                ],
                 accept_multiple_files=True,
+                help="Projets Control4 (.c4p/.c4z), backups Crestron (.lpz/.csp/.usp), Q-SYS (.qsys), Lutron (.lut), logs, XML, JSON, PDF, DOCX…",
             )
             st.session_state.work_docs = uploaded or []
             for f in st.session_state.work_docs:
@@ -220,6 +225,8 @@ with tab_prep:
                         payload_for_ai = build_payload()
                         result = run_ai_analysis(payload_for_ai, doc_text)
                         st.session_state.ai_summary             = result.get("summary", "")
+                        st.session_state.ai_raisonnement        = result.get("raisonnement", "")
+                        st.session_state.ai_web_research        = result.get("web_research", "")
                         st.session_state.ai_hypotheses          = result.get("hypotheses", [])
                         st.session_state.ai_priority_checks     = result.get("priority_checks", [])
                         st.session_state.ai_action_plan         = "\n".join(result.get("action_plan", []))
@@ -233,29 +240,62 @@ with tab_prep:
 
             if st.session_state.ai_raw_json:
                 st.divider()
-                ai1, ai2 = st.columns(2)
-                with ai1:
-                    if st.session_state.ai_hypotheses:
-                        st.markdown("**💡 Hypothèses**")
-                        for item in st.session_state.ai_hypotheses:
-                            st.markdown(f"- {item}")
-                    if st.session_state.ai_risks:
-                        st.markdown("**⚠️ Points de vigilance**")
-                        for item in st.session_state.ai_risks:
-                            st.markdown(f"- {item}")
-                with ai2:
-                    if st.session_state.ai_action_plan:
-                        st.markdown("**🔧 Plan d'action suggéré**")
-                        for item in split_lines(st.session_state.ai_action_plan):
-                            st.markdown(f"- {item}")
-                    if st.session_state.ai_tools_access_needed:
-                        st.markdown("**🧰 Outils requis**")
-                        for item in st.session_state.ai_tools_access_needed:
-                            st.markdown(f"- {item}")
-                    if st.session_state.ai_priority_checks:
-                        st.markdown("**📚 Sources / références**")
-                        for item in st.session_state.ai_priority_checks:
-                            st.markdown(f"- {item}")
+
+                def _md_list(items: list) -> str:
+                    """Construit un bloc markdown avec sauts de ligne internes préservés."""
+                    parts = []
+                    for item in items:
+                        # Les \n  internes deviennent des line-breaks markdown (2 espaces + \n)
+                        formatted = str(item).replace("\n", "  \n  ")
+                        parts.append(f"- {formatted}")
+                    return "\n\n".join(parts)
+
+                # Expanders contextuels (recherche + raisonnement)
+                if st.session_state.get("ai_web_research"):
+                    with st.expander("🌐 Recherche en ligne (fabricants, forums, KB)", expanded=False):
+                        st.markdown(st.session_state.ai_web_research)
+                else:
+                    st.caption("ℹ️ Recherche web indisponible — analyse basée sur les données du formulaire uniquement.")
+
+                if st.session_state.get("ai_raisonnement"):
+                    with st.expander("🧠 Raisonnement IA (étapes de réflexion)", expanded=False):
+                        st.markdown(st.session_state.ai_raisonnement)
+
+                # 1 — Synthèse
+                if st.session_state.get("ai_summary"):
+                    st.markdown("**📋 Synthèse**")
+                    st.info(st.session_state.ai_summary)
+
+                # 2 — Hypothèses
+                if st.session_state.ai_hypotheses:
+                    st.markdown("**💡 Hypothèses**")
+                    st.markdown(_md_list(st.session_state.ai_hypotheses))
+
+                # 3 — Vérifications prioritaires
+                if st.session_state.ai_priority_checks:
+                    st.markdown("**🔍 Vérifications prioritaires**")
+                    st.markdown(_md_list(st.session_state.ai_priority_checks))
+
+                # 4 — Plan d'action
+                if st.session_state.ai_action_plan:
+                    st.markdown("**🔧 Plan d'action**")
+                    items_ap = split_lines(st.session_state.ai_action_plan)
+                    st.markdown(_md_list(items_ap))
+
+                # 5 — Risques / points de vigilance
+                if st.session_state.ai_risks:
+                    st.markdown("**⚠️ Points de vigilance**")
+                    st.markdown(_md_list(st.session_state.ai_risks))
+
+                # 6 — Outils requis
+                if st.session_state.ai_tools_access_needed:
+                    st.markdown("**🧰 Outils et accès requis**")
+                    st.markdown(_md_list(st.session_state.ai_tools_access_needed))
+
+                # 7 — Informations manquantes (conditionnel)
+                if st.session_state.ai_missing_information:
+                    st.markdown("**❓ Informations manquantes**")
+                    st.markdown(_md_list(st.session_state.ai_missing_information))
 
                 st.divider()
                 st.caption("Insérer les suggestions IA dans les champs :")
@@ -275,15 +315,9 @@ with tab_prep:
                 with st.expander("Voir le JSON IA brut"):
                     st.code(st.session_state.ai_raw_json, language="json")
 
-    # ── Colonne droite : aperçu + persistance ───────────────
+    # ── Colonne droite : persistance + aperçu ───────────────
     with right:
-        st.subheader("Aperçu de la fiche")
         payload = build_payload()
-        st.markdown('<div class="report-card">', unsafe_allow_html=True)
-        st.markdown(report_markdown(payload))
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        st.divider()
         cs1, cs2 = st.columns(2)
         if cs1.button("💾 Sauvegarder", use_container_width=True, type="primary",
                       key="save_btn_prep"):
@@ -304,6 +338,12 @@ with tab_prep:
                 cs2.error(f"PDF : {e}")
         else:
             cs2.warning("ReportLab non installé.")
+
+        st.divider()
+        st.subheader("Aperçu de la fiche")
+        st.markdown('<div class="report-card">', unsafe_allow_html=True)
+        st.markdown(report_markdown(payload))
+        st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────
@@ -508,7 +548,11 @@ with tab_dispatch:
 
         # Techniciens déjà dispatchés aujourd'hui
         dispatch_log = get_dispatch_log_for_day(date_str)
-        sent_techs = {e["technician"] for e in dispatch_log if e["status"] == "Success"}
+        sent_techs   = {e["technician"] for e in dispatch_log if e["status"] == "Success"}
+        send_counts: dict = {}
+        for _e in dispatch_log:
+            if _e["status"] == "Success":
+                send_counts[_e["technician"]] = send_counts.get(_e["technician"], 0) + 1
 
         # ── Carte par technicien ─────────────────────────────
         for tech_full, calls in dispatch_data.items():
@@ -520,7 +564,9 @@ with tab_dispatch:
                 ch1, ch2 = st.columns([4, 1])
                 title = f"#### 👷 {tech_full}"
                 if already_sent:
-                    title += " &nbsp;✅"
+                    n = send_counts.get(tech_full, 1)
+                    label = f"envoi #{n}" if n == 1 else f"mis à jour · envoi #{n}"
+                    title += f" &nbsp;✅ <small style='color:#64748b;'>({label})</small>"
                 ch1.markdown(title, unsafe_allow_html=True)
                 ch2.markdown(
                     f"<div style='text-align:right;padding-top:8px;font-size:0.9em;'>"

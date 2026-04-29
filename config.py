@@ -3,6 +3,8 @@ config.py — Constantes globales de l'application.
 Modifier CE fichier pour ajouter/retirer des techniciens, systèmes, etc.
 """
 
+APP_VERSION = "1.3"
+
 SYSTEM_OPTIONS = [
     "Unifi Networks",
     "Unifi Protect",

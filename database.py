@@ -268,7 +268,7 @@ def get_real_intervention(pre_intervention_id: int) -> Optional[Dict[str, Any]]:
 def get_dispatch_for_day(date_str: str) -> Dict[str, List[Dict[str, Any]]]:
     conn = get_conn()
     rows = conn.execute("""
-        SELECT id, client_name, address, scheduled_datetime,
+        SELECT id, updated_at, client_name, address, scheduled_datetime,
                service_call, assigned_technician, intervention_goal, payload_json
         FROM pre_interventions
         WHERE scheduled_datetime LIKE ? || '%'
@@ -304,3 +304,73 @@ def get_dispatch_log_for_day(date_str: str) -> List[Dict[str, Any]]:
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def get_dispatch_send_count(technician: str, date_str: str) -> int:
+    """Returns the number of successful dispatch sends for this tech on a given date."""
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM dispatch_log WHERE technician=? AND dispatch_date=? AND status='Success'",
+        (technician, date_str),
+    ).fetchone()
+    conn.close()
+    return int(row["cnt"]) if row else 0
+
+
+def get_last_dispatch_snapshot(technician: str, date_str: str) -> Optional[Dict[str, Any]]:
+    """Returns the call snapshot stored in the last successful dispatch for this tech+date, or None."""
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT details FROM dispatch_log WHERE technician=? AND dispatch_date=? AND status='Success' ORDER BY timestamp DESC LIMIT 1",
+        (technician, date_str),
+    ).fetchone()
+    conn.close()
+    if not row or not row["details"]:
+        return None
+    try:
+        data = json.loads(row["details"])
+        if isinstance(data, dict) and "call_ids" in data:
+            return data
+    except Exception:
+        pass
+    return None
+
+
+# ─── Historique pour contexte IA ───────────────────────────
+
+def get_similar_cases(systems: List[str], limit: int = 4) -> List[Dict[str, Any]]:
+    """
+    Retourne les interventions passées avec retour terrain (work_done renseigné)
+    qui partagent au moins un système avec la liste fournie.
+    Triées par nombre de systèmes en commun, puis par date décroissante.
+    """
+    if not systems:
+        return []
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT p.id, p.client_name, p.systems_present_json, p.payload_json,
+               r.work_done, r.real_root_cause,
+               rc.missing_critical_info, rc.notes AS rec_notes,
+               rc.hypotheses_hit_score, rc.plan_relevance_score
+        FROM pre_interventions p
+        INNER JOIN real_interventions r ON r.pre_intervention_id = p.id
+        LEFT JOIN reconciliation_feedback rc ON rc.pre_intervention_id = p.id
+        WHERE r.work_done IS NOT NULL AND r.work_done != ''
+        ORDER BY p.updated_at DESC
+        LIMIT 100
+    """).fetchall()
+    conn.close()
+
+    systems_lower = {s.lower() for s in systems}
+    scored: List[tuple] = []
+    for row in rows:
+        try:
+            case_systems = json.loads(row["systems_present_json"] or "[]")
+            overlap = systems_lower & {s.lower() for s in case_systems}
+            if overlap:
+                scored.append((len(overlap), dict(row)))
+        except Exception:
+            continue
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [item for _, item in scored[:limit]]

@@ -290,14 +290,15 @@ def report_markdown(payload: Dict[str, Any]) -> str:
 
     if clean_text(technique["references_utiles"]):
         lines += ["## 📁 Références utiles", technique["references_utiles"], ""]
-    if clean_text(reflexion.get("risks")):
-        lines += ["## ⚠️ Risques identifiés", reflexion["risks"], ""]
+
+    if clean_text(reflexion.get("hypotheses")):
+        lines += ["## 💡 Hypothèses", reflexion["hypotheses"], ""]
 
     lines += ["## ✅ Vérifications prioritaires", reflexion.get("priority_checks") or "—", ""]
     lines += ["## 🔧 Plan d'action",              reflexion.get("action_plan")     or "—", ""]
 
-    if clean_text(reflexion.get("hypotheses")):
-        lines += ["## 💡 Hypothèses", reflexion["hypotheses"], ""]
+    if clean_text(reflexion.get("risks")):
+        lines += ["## ⚠️ Risques identifiés", reflexion["risks"], ""]
     if clean_text(reflexion.get("tools_access_needed")):
         lines += ["## 🧰 Outils / Stock", reflexion["tools_access_needed"], ""]
 
@@ -559,10 +560,10 @@ def generate_pdf(payload: Dict[str, Any]) -> bytes:
             story.extend(env[4:])
 
     add_section("Références utiles",          technique.get("references_utiles", ""))
-    add_section("Risques identifiés",          reflexion.get("risks", ""))
+    add_section("Hypothèses",                 reflexion.get("hypotheses", ""))
     add_section("Vérifications prioritaires",  reflexion.get("priority_checks", ""))
     add_section("Plan d'action",               reflexion.get("action_plan", ""))
-    add_section("Hypothèses",                 reflexion.get("hypotheses", ""))
+    add_section("Risques identifiés",          reflexion.get("risks", ""))
     add_section("Outils / Stock à ramasser",  reflexion.get("tools_access_needed", ""))
 
     doc.build(story, onFirstPage=draw_chrome, onLaterPages=draw_chrome)
