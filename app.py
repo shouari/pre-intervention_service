@@ -175,11 +175,11 @@ with tab_prep:
                 "Documents de travail (facultatif)",
                 type=[
                     "pdf", "txt", "docx", "json", "xml", "csv", "log",
-                    "c4p", "c4z", "lpz", "qsys", "zip",
+                    "c4p", "c4z", "lpz", "qsys", "zip", "unf",
                     "csp", "usp", "lua", "lut", "ini", "cfg", "yaml", "yml",
                 ],
                 accept_multiple_files=True,
-                help="Projets Control4 (.c4p/.c4z), backups Crestron (.lpz/.csp/.usp), Q-SYS (.qsys), Lutron (.lut), logs, XML, JSON, PDF, DOCX…",
+                help="Projets Control4 (.c4p/.c4z), backups Crestron (.lpz/.csp/.usp), Q-SYS (.qsys), Lutron (.lut), Unifi (.unf), logs, XML, JSON, PDF, DOCX…",
             )
             st.session_state.work_docs = uploaded or []
             for f in st.session_state.work_docs:
