@@ -119,24 +119,34 @@ with tab_prep:
     with left:
         # ── 0) Import D-Tools ──────────────────────────────
         with st.expander("📡 Importer depuis D-Tools", expanded=False):
-            col_sc, col_key = st.columns([1, 2])
+            # ── Credentials (persistés en session pour la durée de la session) ──
+            col_key1, col_key2, col_key3 = st.columns(3)
+            with col_key1:
+                dt_token_input   = st.text_input("DTToken",      type="password", key="dt_token_input")
+            with col_key2:
+                auth_token_input = st.text_input("Authorization (Bearer)", type="password", key="dt_auth_input")
+            with col_key3:
+                sub_key_input    = st.text_input("Ocp-Apim-Subscription-Key", type="password", key="dt_sub_input")
+
+            st.divider()
+
+            # ── Mode 1 : import unitaire ──────────────────────────────
+            st.caption("**Import unitaire** — charger un SC dans le formulaire courant")
+            col_sc, col_btn = st.columns([2, 1])
             with col_sc:
                 sc_number_input = st.text_input(
-                    "Numéro SC", placeholder="SC-1058", key="dt_sc_number"
+                    "Numéro SC", placeholder="SC-1058", key="dt_sc_number",
+                    label_visibility="collapsed",
                 )
-            with col_key:
-                dt_token_input = st.text_input("DTToken", type="password", key="dt_token_input")
-            col_auth, col_sub = st.columns(2)
-            with col_auth:
-                auth_token_input = st.text_input("Authorization (Bearer)", type="password", key="dt_auth_input")
-            with col_sub:
-                sub_key_input = st.text_input("Ocp-Apim-Subscription-Key", type="password", key="dt_sub_input")
+            with col_btn:
+                do_single = st.button("🔍 Importer ce SC", key="dt_import_btn",
+                                      use_container_width=True, type="primary")
 
-            if st.button("🔍 Importer", key="dt_import_btn", use_container_width=True, type="primary"):
+            if do_single:
                 if not sc_number_input.strip():
-                    st.warning("Entrez un numéro de SC (ex: SC-1058).")
+                    st.warning("Entrez un numéro de SC.")
                 else:
-                    with st.spinner(f"Récupération de {sc_number_input.strip()} depuis D-Tools…"):
+                    with st.spinner(f"Récupération de {sc_number_input.strip()}…"):
                         from d_tools_client import fetch_service_call, parse_sc_to_payload_fields
                         sc_data, err = fetch_service_call(
                             sc_number_input.strip(),
@@ -148,27 +158,106 @@ with tab_prep:
                         st.error(f"Import échoué : {err}")
                     else:
                         fields = parse_sc_to_payload_fields(sc_data)
-
-                        # Scalaires simples
                         for key in ("client_name", "service_call", "address",
                                     "reported_issue", "history_context", "attempts_summary"):
                             if fields.get(key) is not None:
                                 st.session_state[key] = fields[key]
-
-                        # datetime
                         if fields.get("scheduled_datetime") is not None:
                             st.session_state["scheduled_datetime"] = fields["scheduled_datetime"]
-
-                        # Techniciens : liste Python, filtrer ceux dans TECHNICIAN_LIST
                         techs = fields.get("assigned_technician") or []
                         if techs:
                             st.session_state["assigned_technician"] = techs
-
                         st.success(
                             f"✅ {sc_number_input.strip()} importé — "
-                            f"{len(techs)} technicien(s) résolu(s). Vérifiez et complétez."
+                            f"{len(techs)} technicien(s). Vérifiez et complétez."
                         )
                         st.rerun()
+
+            st.divider()
+
+            # ── Mode 2 : import batch par date → DB ──────────────────
+            st.caption("**Import batch** — importer tous les SC d'une journée et les sauvegarder en DB")
+            col_date, col_batch = st.columns([2, 1])
+            with col_date:
+                import datetime as _dt
+                batch_date = st.date_input(
+                    "Date cible", value=_dt.date.today() + _dt.timedelta(days=1),
+                    key="dt_batch_date", label_visibility="collapsed",
+                )
+            with col_batch:
+                do_batch = st.button("📥 Importer la journée", key="dt_batch_btn",
+                                     use_container_width=True)
+
+            if do_batch:
+                date_str_batch = batch_date.strftime("%Y-%m-%d")
+                with st.spinner(f"Récupération des SC du {date_str_batch}…"):
+                    from d_tools_client import fetch_service_calls_for_date, parse_sc_list_to_dispatch
+                    sc_list, err = fetch_service_calls_for_date(
+                        date_str_batch,
+                        dt_token_input.strip(),
+                        auth_token_input.strip(),
+                        sub_key_input.strip(),
+                    )
+                if err:
+                    st.error(f"Import batch échoué : {err}")
+                elif not sc_list:
+                    st.info(f"Aucun SC planifié pour le {date_str_batch}.")
+                else:
+                    from database import save_pre_intervention
+                    from utils import format_datetime
+
+                    saved = 0
+                    skipped = 0
+                    for item in parse_sc_list_to_dispatch(sc_list):
+                        dt_val = item["scheduled_datetime"]
+                        dt_str = format_datetime(dt_val) if dt_val else ""
+                        techs  = item["assigned_technician"]
+                        minimal_payload = {
+                            "meta": {
+                                "created_at":          "",
+                                "status":              "Brouillon",
+                                "completion_score":    0,
+                                "pre_intervention_id": None,
+                            },
+                            "mandat": {
+                                "client_name":         item["client_name"],
+                                "address":             item["address"],
+                                "contact_name":        "",
+                                "contact_phone":       "",
+                                "scheduled_datetime":  dt_str,
+                                "service_call":        item["service_call"],
+                                "assigned_technician": ", ".join(techs) if techs else "",
+                                "intervention_goal":   "",
+                            },
+                            "probleme": {
+                                "reported_issue": item["reported_issue"],
+                            },
+                            "technique": {
+                                "systems_present":   [],
+                                "attempts_summary":  item["attempts_summary"],
+                                "site_constraints":  "",
+                                "references_utiles": "",
+                                "work_docs":         [],
+                                "history_context":   item["history_context"],
+                            },
+                            "reflexion": {
+                                "risks": "", "hypotheses": "", "priority_checks": "",
+                                "action_plan": "", "tools_access_needed": "",
+                                "confidence_level": "Moyen",
+                            },
+                            "ai_output": {},
+                        }
+                        try:
+                            save_pre_intervention(minimal_payload, None)
+                            saved += 1
+                        except Exception:
+                            skipped += 1
+
+                    st.success(
+                        f"✅ {saved} SC importés en DB pour le {date_str_batch}"
+                        + (f" ({skipped} erreurs)" if skipped else "")
+                        + " — consultez l'onglet **Historique**."
+                    )
 
         # ── 1) Mandat ──────────────────────────────────────
         with st.expander("Mandat", expanded=True):

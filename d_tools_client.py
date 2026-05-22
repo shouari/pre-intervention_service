@@ -61,56 +61,152 @@ def fetch_service_call(
     auth_token: str,
     subscription_key: str,
 ) -> tuple[dict | None, str]:
-    """
-    Appelle GET https://api.d-tools.cloud/Service/api/v1/ServiceCalls/GetServiceCalls
-
-    Headers :
-        DTToken: <dt_token>
-        Authorization: Bearer <auth_token>
-        Ocp-Apim-Subscription-Key: <subscription_key>
-
-    Timeout : 10 s.
-    Filtre la liste pour trouver l'entrée dont number == sc_number (ex: "SC-1058").
-
-    Retourne :
-        (sc_dict, "")              si trouvé
-        (None, message_erreur)     sinon
-    """
     headers = {
-        "DTToken": dt_token,
-        "Authorization": f"Bearer {auth_token}",
+        "Accept":                    "application/json, text/plain, */*",
+        "Authorization":             f"Bearer {auth_token}",
+        "Content-Type":              "application/json; charset=UTF-8",
+        "DTToken":                   dt_token,
         "Ocp-Apim-Subscription-Key": subscription_key,
+        "Origin":                    "https://d-tools.cloud",
+        "Referer":                   "https://d-tools.cloud/",
+        "User-Agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "X-DTools-Token":            "",
     }
-
+    body = {
+        "clientIds": [],
+        "serviceCallIds": None,
+        "serviceContractIds": [],
+        "projectIds": [],
+        "priorityIds": [],
+        "stateIds": [],
+        "statusIds": [],
+        "resourceIds": [],
+        "fromCreatedOn": "2020-01-01",
+        "toCreatedOn":   "2030-12-31",
+        "archived": False,
+        "includeTotalCount": True,
+        "search": "",
+        "fields": None,
+        "sort": "createdOn",
+        "page": 1,
+        "pageSize": 500,
+    }
     try:
-        response = requests.get(_DTOOLS_API_URL, headers=headers, timeout=10)
+        response = requests.post(_DTOOLS_API_URL, headers=headers, json=body, timeout=15)
         response.raise_for_status()
         data = response.json()
     except requests.exceptions.ConnectionError:
         return None, "Impossible de joindre l'API D-Tools (ConnectionError)."
     except requests.exceptions.Timeout:
-        return None, "La requête vers D-Tools a expiré (Timeout 10 s)."
+        return None, "La requête vers D-Tools a expiré (Timeout 15 s)."
     except requests.exceptions.HTTPError as exc:
-        return None, f"Erreur HTTP {exc.response.status_code} : {exc.response.text[:200]}"
-    except Exception as exc:  # noqa: BLE001
-        return None, f"Erreur inattendue lors de la requête : {exc}"
+        return None, f"Erreur HTTP {exc.response.status_code} : {exc.response.text[:300]}"
+    except Exception as exc:
+        return None, str(exc)
 
-    # La réponse peut être une liste directe ou un dict enveloppant
-    if isinstance(data, dict):
-        items = data.get("value") or data.get("items") or data.get("data") or []
-    elif isinstance(data, list):
-        items = data
-    else:
-        return None, "Format de réponse inattendu (ni liste ni dict)."
+    items = data.get("items") or data.get("value") or (data if isinstance(data, list) else [])
 
-    try:
-        for sc in items:
-            if sc.get("number", "").strip() == sc_number.strip():
-                return sc, ""
-    except (KeyError, IndexError, TypeError) as exc:
-        return None, f"Erreur lors du parcours des résultats : {exc}"
+    for sc in items:
+        if sc.get("number", "").strip() == sc_number.strip():
+            return sc, ""
 
-    return None, f"Aucun Service Call trouvé avec le numéro « {sc_number} »."
+    return None, f"Aucun SC trouvé avec le numéro '{sc_number}'."
+
+
+# ── Fonction 2 : fetch_service_calls_for_date ────────────────────────────────
+
+def fetch_service_calls_for_date(
+    target_date: str,
+    dt_token: str,
+    auth_token: str,
+    subscription_key: str,
+) -> tuple[list[dict], str]:
+    """
+    Récupère tous les SC dont scheduledDateTime commence par target_date.
+    Utilise la même logique POST que fetch_service_call.
+    Retourne (liste_sc, "") ou ([], message_erreur).
+    Pagine automatiquement : pageSize=100, incrémente page jusqu'à épuisement.
+    """
+    headers = {
+        "Accept":                    "application/json, text/plain, */*",
+        "Authorization":             f"Bearer {auth_token}",
+        "Content-Type":              "application/json; charset=UTF-8",
+        "DTToken":                   dt_token,
+        "Ocp-Apim-Subscription-Key": subscription_key,
+        "Origin":                    "https://d-tools.cloud",
+        "Referer":                   "https://d-tools.cloud/",
+        "User-Agent":                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "X-DTools-Token":            "",
+    }
+    page = 1
+    all_items: list[dict] = []
+    while True:
+        body = {
+            "clientIds": [],
+            "serviceCallIds": None,
+            "serviceContractIds": [],
+            "projectIds": [],
+            "priorityIds": [],
+            "stateIds": [],
+            "statusIds": [],
+            "resourceIds": [],
+            "fromCreatedOn": "2020-01-01",
+            "toCreatedOn":   "2030-12-31",
+            "archived": False,
+            "includeTotalCount": True,
+            "search": "",
+            "fields": None,
+            "sort": "createdOn",
+            "page": page,
+            "pageSize": 100,
+        }
+        try:
+            response = requests.post(_DTOOLS_API_URL, headers=headers, json=body, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.ConnectionError:
+            return [], "Impossible de joindre l'API D-Tools (ConnectionError)."
+        except requests.exceptions.Timeout:
+            return [], "La requête vers D-Tools a expiré (Timeout 15 s)."
+        except requests.exceptions.HTTPError as exc:
+            return [], f"Erreur HTTP {exc.response.status_code} : {exc.response.text[:300]}"
+        except Exception as exc:
+            return [], str(exc)
+
+        items = data.get("items") or data.get("value") or (data if isinstance(data, list) else [])
+        all_items.extend(items)
+        if len(items) < 100:
+            break
+        page += 1
+        if page > 20:
+            break
+
+    filtered = [sc for sc in all_items if (sc.get("scheduledDateTime") or "").startswith(target_date)]
+    return filtered, ""
+
+
+# ── Fonction 3 : parse_sc_list_to_dispatch ───────────────────────────────────
+
+def parse_sc_list_to_dispatch(sc_list: list[dict]) -> list[dict]:
+    """
+    Convertit une liste de SC D-Tools en liste de dicts prêts pour
+    save_pre_intervention (via build_payload).
+    """
+    result = []
+    for sc in sc_list:
+        fields = parse_sc_to_payload_fields(sc)
+        result.append({
+            "client_name":         fields["client_name"] or "",
+            "service_call":        fields["service_call"] or "",
+            "address":             fields["address"] or "",
+            "scheduled_datetime":  fields["scheduled_datetime"],
+            "reported_issue":      fields["reported_issue"] or "",
+            "history_context":     fields["history_context"] or "",
+            "attempts_summary":    fields["attempts_summary"] or "",
+            "assigned_technician": fields["assigned_technician"],
+            "dt_id":               sc.get("id"),
+        })
+    return result
 
 
 # ── Aide interne : parsing HTML ───────────────────────────────────────────────
