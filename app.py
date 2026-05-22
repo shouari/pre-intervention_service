@@ -22,6 +22,7 @@ from database import (
     DB_PATH, init_db,
     list_pre_interventions, get_pre_intervention,
     get_real_intervention, save_pre_intervention,
+    delete_pre_intervention,
     get_dispatch_for_day, get_dispatch_log_for_day,
 )
 from utils import clean_text, split_lines, safe_filename, format_french_date, completion_score
@@ -568,17 +569,41 @@ with tab_hist:
         st.info("Aucune pré-intervention enregistrée pour ce filtre.")
     else:
         for row in rows:
-            has_retour = bool(get_real_intervention(int(row["id"])))
+            row_id     = int(row["id"])
+            has_retour = bool(get_real_intervention(row_id))
+            confirming = st.session_state.get(f"_del_confirm_{row_id}", False)
+
             with st.container(border=True):
-                c1, c2, c3, c4, c5, c6 = st.columns([2.2, 1.2, 1.2, 0.9, 0.7, 0.9])
-                c1.markdown(f"**#{row['id']} — {row['client_name'] or '—'}**")
-                c1.caption(f"Appel: {row['service_call'] or '—'} | Tech: {row['assigned_technician'] or '—'}")
-                c2.write(row["scheduled_datetime"] or "—")
-                c3.write(row["status"] or "—")
-                c4.write(f"{row['completion_score'] or 0}%")
-                c5.write("✅" if has_retour else "—")
-                c6.button("Charger", key=f"load_{row['id']}",
-                          on_click=load_historical_data_callback, args=(int(row["id"]),))
+                if confirming:
+                    st.warning(
+                        f"Supprimer **#{row_id} — {row['client_name'] or '—'}** ? "
+                        "Cette action est irréversible."
+                    )
+                    bc1, bc2 = st.columns(2)
+                    if bc1.button("✓ Oui, effacer", key=f"del_yes_{row_id}",
+                                  type="primary", use_container_width=True):
+                        delete_pre_intervention(row_id)
+                        st.session_state.pop(f"_del_confirm_{row_id}", None)
+                        if st.session_state.get("current_pre_intervention_id") == row_id:
+                            st.session_state.current_pre_intervention_id = None
+                        st.rerun()
+                    if bc2.button("✗ Annuler", key=f"del_no_{row_id}",
+                                  use_container_width=True):
+                        st.session_state.pop(f"_del_confirm_{row_id}", None)
+                        st.rerun()
+                else:
+                    c1, c2, c3, c4, c5, c6, c7 = st.columns([2.2, 1.2, 1.2, 0.9, 0.7, 0.7, 0.5])
+                    c1.markdown(f"**#{row_id} — {row['client_name'] or '—'}**")
+                    c1.caption(f"Appel: {row['service_call'] or '—'} | Tech: {row['assigned_technician'] or '—'}")
+                    c2.write(row["scheduled_datetime"] or "—")
+                    c3.write(row["status"] or "—")
+                    c4.write(f"{row['completion_score'] or 0}%")
+                    c5.write("✅" if has_retour else "—")
+                    c6.button("Charger", key=f"load_{row_id}",
+                              on_click=load_historical_data_callback, args=(row_id,))
+                    if c7.button("🗑️", key=f"del_{row_id}", help="Effacer cette entrée"):
+                        st.session_state[f"_del_confirm_{row_id}"] = True
+                        st.rerun()
 
 
 # ─────────────────────────────────────────────────────────

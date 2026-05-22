@@ -200,6 +200,16 @@ def get_pre_intervention(pre_id: int) -> Optional[Dict[str, Any]]:
     return dict(row) if row else None
 
 
+def delete_pre_intervention(pre_id: int) -> None:
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM reconciliation_feedback WHERE pre_intervention_id=?", (pre_id,))
+    cur.execute("DELETE FROM real_interventions WHERE pre_intervention_id=?", (pre_id,))
+    cur.execute("DELETE FROM pre_interventions WHERE id=?", (pre_id,))
+    conn.commit()
+    conn.close()
+
+
 # ─── Interventions réelles ─────────────────────────────────
 
 def upsert_real_intervention(pre_intervention_id: int, data: Dict[str, Any]) -> int:
