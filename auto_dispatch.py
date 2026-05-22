@@ -5,9 +5,10 @@ Usage (planifier via Windows Task Scheduler) :
     python auto_dispatch.py              → dispatch pour DEMAIN
     python auto_dispatch.py 2026-05-08   → dispatch pour la date spécifiée
 
-Le script envoie uniquement aux techniciens qui n'ont PAS encore reçu
-d'email pour cette journée (send_count == 0). Si tous sont déjà
-dispatchés, aucun envoi n'est effectué.
+Conditions d'envoi pour chaque technicien :
+    1. Jamais dispatché ce jour-là (send_count == 0), OU
+    2. Déjà dispatché mais des changements ont eu lieu depuis le dernier envoi
+       (appels ajoutés, retirés, ou modifiés)
 
 Variables d'environnement requises (ou dans .env) :
     BREVO_API_KEY        clé API Brevo
@@ -28,8 +29,8 @@ except ImportError:
     pass
 
 # ── Modules internes ───────────────────────────────────────
-from database import init_db, get_dispatch_for_day, get_dispatch_send_count
-from dispatch import send_dispatch_emails
+from database import init_db, get_dispatch_for_day, get_dispatch_send_count, get_last_dispatch_snapshot
+from dispatch import send_dispatch_emails, _build_snapshot, _compute_changes, _format_changes
 from config import TECH_EMAIL_MAP
 from utils import format_french_date
 
@@ -47,6 +48,20 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
+def _has_changes(tech: str, calls: list, date_str: str) -> tuple[bool, str]:
+    """
+    Retourne (True, description) si les appels ont changé depuis le dernier dispatch,
+    (False, "") sinon.
+    """
+    prev_snapshot = get_last_dispatch_snapshot(tech, date_str)
+    if prev_snapshot is None:
+        return False, ""
+    new_snapshot = _build_snapshot(calls)
+    changes = _compute_changes(prev_snapshot, new_snapshot)
+    has = bool(changes["added"] or changes["removed"] or changes["modified"])
+    return has, _format_changes(changes) if has else ""
+
+
 def run(target_date: date) -> None:
     date_str = target_date.strftime("%Y-%m-%d")
     readable = format_french_date(date_str)
@@ -59,34 +74,34 @@ def run(target_date: date) -> None:
         log.info("Aucun appel planifié pour le %s — rien à envoyer.", readable)
         return
 
-    # Filtrer les techniciens qui n'ont PAS encore reçu d'email ce jour-là
-    not_yet_sent = {
-        tech: calls
-        for tech, calls in dispatch_data.items()
-        if get_dispatch_send_count(tech, date_str) == 0
-    }
+    # Décider qui doit recevoir un email
+    to_send: dict = {}
+    for tech, calls in dispatch_data.items():
+        send_count = get_dispatch_send_count(tech, date_str)
 
-    already_sent = set(dispatch_data) - set(not_yet_sent)
-    if already_sent:
-        log.info(
-            "Déjà dispatchés (ignorés) : %s",
-            ", ".join(sorted(already_sent)),
-        )
+        if send_count == 0:
+            log.info("  → %s : jamais dispatché — envoi initial", tech)
+            to_send[tech] = calls
+        else:
+            changed, desc = _has_changes(tech, calls, date_str)
+            if changed:
+                log.info("  → %s : changements détectés (%s) — mise à jour", tech, desc)
+                to_send[tech] = calls
+            else:
+                log.info("  ✓ %s : déjà dispatché, aucun changement — ignoré", tech)
 
-    if not not_yet_sent:
-        log.info("Tous les techniciens sont déjà dispatchés pour le %s.", readable)
+    if not to_send:
+        log.info("Aucun envoi nécessaire pour le %s.", readable)
         return
 
     log.info(
         "Envoi pour %d technicien(s) : %s",
-        len(not_yet_sent),
-        ", ".join(sorted(not_yet_sent)),
+        len(to_send),
+        ", ".join(sorted(to_send)),
     )
 
-    # CC fixe vers le service (peut être vidé si indésirable)
-    cc_map = {tech: "service@groupecs.com" for tech in not_yet_sent}
-
-    results = send_dispatch_emails(not_yet_sent, date_str, TECH_EMAIL_MAP, cc_map)
+    cc_map = {tech: "service@groupecs.com" for tech in to_send}
+    results = send_dispatch_emails(to_send, date_str, TECH_EMAIL_MAP, cc_map)
 
     ok = err = skipped = 0
     for r in results:
