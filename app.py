@@ -159,7 +159,8 @@ with tab_prep:
                     else:
                         fields = parse_sc_to_payload_fields(sc_data)
                         for key in ("client_name", "service_call", "address",
-                                    "reported_issue", "history_context", "attempts_summary"):
+                                    "reported_issue", "history_context", "attempts_summary",
+                                    "contact_phone"):
                             if fields.get(key) is not None:
                                 st.session_state[key] = fields[key]
                         if fields.get("scheduled_datetime") is not None:
@@ -223,7 +224,7 @@ with tab_prep:
                                 "client_name":         item["client_name"],
                                 "address":             item["address"],
                                 "contact_name":        "",
-                                "contact_phone":       "",
+                                "contact_phone":       item.get("contact_phone") or "",
                                 "scheduled_datetime":  dt_str,
                                 "service_call":        item["service_call"],
                                 "assigned_technician": ", ".join(techs) if techs else "",
