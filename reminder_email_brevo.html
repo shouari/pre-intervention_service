@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="fr" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:v="urn:schemas-microsoft-com:vml">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <title>Alerte appels non préparés – Groupe CS</title>
+  <!--[if mso]>
+  <noscript>
+    <xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml>
+  </noscript>
+  <![endif]-->
+  <style>
+    body { margin: 0; padding: 0; background-color: #F0F2F5; }
+    table { border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { border: 0; outline: none; text-decoration: none; -ms-interpolation-mode: bicubic; }
+    @media only screen and (max-width: 480px) {
+      .container { width: 100% !important; }
+      .side-pad { padding-left: 20px !important; padding-right: 20px !important; }
+    }
+  </style>
+</head>
+<body style="margin:0;padding:0;background-color:#F0F2F5;font-family:Arial,Helvetica,sans-serif;">
+
+<table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation" style="background-color:#F0F2F5;">
+  <tr>
+    <td align="center" style="padding:32px 16px;">
+
+      <!-- Container -->
+      <table class="container" width="600" cellpadding="0" cellspacing="0" border="0" role="presentation" style="background-color:#FFFFFF;">
+
+        <!-- HEADER -->
+        <tr>
+          <td style="background-color:#0D1B2A;padding:32px 40px 28px;border-bottom:3px solid #E8312A;">
+            <p style="margin:0 0 4px 0;font-size:13px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#FFFFFF;font-family:Arial,sans-serif;">
+              GROUPE <span style="color:#E8312A;">CS</span>
+            </p>
+            <p style="margin:0;font-size:11px;color:#8A99AA;letter-spacing:1px;text-transform:uppercase;font-family:Arial,sans-serif;">
+              Alerte &mdash; Appels non pr&eacute;par&eacute;s
+            </p>
+          </td>
+        </tr>
+
+        <!-- DATE BANNER -->
+        <tr>
+          <td class="side-pad" style="background-color:#F7F8FA;padding:14px 40px;border-bottom:1px solid #EAEDF0;">
+            <table cellpadding="0" cellspacing="0" border="0" role="presentation">
+              <tr>
+                <td style="background-color:#0D1B2A;padding:5px 12px;">
+                  <span style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#FFFFFF;font-family:Arial,sans-serif;">Journ&eacute;e</span>
+                </td>
+                <td style="padding-left:12px;">
+                  <span style="font-size:15px;font-weight:600;color:#1A2533;font-family:Arial,sans-serif;">{{ params.readable_date }}</span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- ALERT BANNER -->
+        <tr>
+          <td class="side-pad" style="background-color:#FEF3C7;padding:14px 40px;border-bottom:2px solid #F59E0B;">
+            <table cellpadding="0" cellspacing="0" border="0" role="presentation" width="100%">
+              <tr>
+                <td width="1" style="white-space:nowrap;">
+                  <table cellpadding="0" cellspacing="0" border="0" role="presentation">
+                    <tr>
+                      <td style="background-color:#D97706;padding:5px 12px;white-space:nowrap;">
+                        <span style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#FFFFFF;font-family:Arial,sans-serif;">
+                          &#9888;&nbsp;ACTION REQUISE
+                        </span>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+                <td style="padding-left:14px;">
+                  <span style="font-size:14px;font-weight:700;color:#92400E;font-family:Arial,sans-serif;">
+                    {{ params.call_count }} appel(s) non pr&eacute;par&eacute;(s) pour le {{ params.readable_date }}
+                  </span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- GREETING -->
+        <tr>
+          <td class="side-pad" style="padding:32px 40px 0;">
+            <p style="margin:0 0 8px 0;font-size:22px;font-weight:700;color:#0D1B2A;line-height:1.3;font-family:Arial,sans-serif;">
+              Bonjour,
+            </p>
+            <p style="margin:0 0 24px 0;font-size:14px;color:#556678;line-height:1.6;font-family:Arial,sans-serif;">
+              Les appels de service suivants ne sont pas encore pr&ecirc;ts pour le&nbsp;<strong>{{ params.readable_date }}</strong>.
+              Veuillez compl&eacute;ter les fiches avant&nbsp;<strong>16h30</strong>.
+            </p>
+            <p style="margin:0 0 14px 0;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#9AAABB;font-family:Arial,sans-serif;">
+              {{ params.call_count }} appel(s) &agrave; compl&eacute;ter
+            </p>
+          </td>
+        </tr>
+
+        <!-- CALL CARDS LOOP -->
+        {% for call in params.calls %}
+        <tr>
+          <td class="side-pad" style="padding:0 40px 12px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">
+              <tr>
+                <!-- Accent gauche rouge -->
+                <td width="4" style="background-color:#E8312A;font-size:0;line-height:0;">&nbsp;</td>
+                <td style="background-color:#F7F8FA;padding:0;font-family:Arial,sans-serif;">
+
+                  <!-- Zone principale -->
+                  <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">
+                    <tr>
+                      <td style="padding:16px 18px 12px;">
+
+                        <!-- Ligne 1 : heure + client -->
+                        <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="margin-bottom:10px;">
+                          <tr>
+                            <td style="background-color:#0D1B2A;padding:4px 10px;white-space:nowrap;">
+                              <span style="font-size:13px;font-weight:700;color:#FFFFFF;font-family:Arial,sans-serif;">{{ call.time_str }}</span>
+                            </td>
+                            <td style="padding-left:10px;">
+                              <span style="font-size:15px;font-weight:700;color:#0D1B2A;font-family:Arial,sans-serif;">{{ call.client_name }}</span>
+                            </td>
+                          </tr>
+                        </table>
+
+                        <!-- Ligne 2 : adresse -->
+                        <p style="margin:0 0 8px 0;font-size:13px;color:#556678;line-height:1.5;font-family:Arial,sans-serif;">
+                          &#128205;&nbsp;{{ call.address }}
+                        </p>
+
+                        <!-- Ligne 3 : technicien + SC -->
+                        <p style="margin:0;font-size:13px;color:#334155;line-height:1.5;font-family:Arial,sans-serif;">
+                          &#128295;&nbsp;Tech&nbsp;: <strong>{{ call.technician }}</strong>
+                          &nbsp;&middot;&nbsp;
+                          SC&nbsp;: <strong>{{ call.service_call }}</strong>
+                        </p>
+
+                      </td>
+                    </tr>
+
+                    <!-- Ligne 4 : champs manquants (fond orange pâle) -->
+                    <tr>
+                      <td style="background-color:#FFFBEB;padding:10px 18px;border-top:1px solid #FDE68A;">
+                        <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">
+                          <tr>
+                            <td>
+                              <span style="font-size:12px;color:#92400E;font-family:Arial,sans-serif;">
+                                &#9888;&nbsp;<strong>{{ call.missing_fields }}</strong>
+                                &nbsp;&mdash;&nbsp;Compl&eacute;tion&nbsp;: {{ call.completion_score }}%
+                              </span>
+                            </td>
+                            <td align="right" style="white-space:nowrap;padding-left:12px;">
+                              <a href="http://localhost:8501"
+                                 target="_blank"
+                                 style="font-size:12px;font-weight:700;color:#E8312A;text-decoration:none;font-family:Arial,sans-serif;">
+                                Ouvrir la fiche &rarr;
+                              </a>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        {% endfor %}
+
+        <!-- DIVIDER -->
+        <tr>
+          <td style="padding:16px 40px 0;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" role="presentation">
+              <tr><td style="height:1px;background-color:#EAEDF0;font-size:0;line-height:0;">&nbsp;</td></tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- FOOTER -->
+        <tr>
+          <td class="side-pad" style="background-color:#F7F8FA;border-top:1px solid #EAEDF0;padding:20px 40px;text-align:center;">
+            <p style="margin:0 0 6px 0;font-size:13px;color:#556678;line-height:1.6;font-family:Arial,sans-serif;">
+              Ne pas r&eacute;pondre directement &agrave; ce courriel.
+            </p>
+            <p style="margin:0 0 8px 0;font-size:11px;color:#9AAABB;line-height:1.6;font-family:Arial,sans-serif;">
+              Contact&nbsp;: <a href="mailto:service@groupecs.com" style="color:#1A6FE8;text-decoration:underline;">service@groupecs.com</a>
+            </p>
+            <p style="margin:0;font-size:10px;color:#C8D0DA;letter-spacing:0.5px;font-family:Arial,sans-serif;">
+              Rappel automatique &mdash; Syst&egrave;me SAV
+            </p>
+          </td>
+        </tr>
+
+      </table>
+      <!-- /Container -->
+
+    </td>
+  </tr>
+</table>
+
+</body>
+</html>
