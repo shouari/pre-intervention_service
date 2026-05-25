@@ -5,8 +5,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import urllib3
 import requests
 from bs4 import BeautifulSoup
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from config import TECHNICIAN_LIST
 
@@ -98,11 +101,12 @@ def _post_dtools(
         "pageSize":           page_size,
     }
     try:
-        response = requests.post(_DTOOLS_API_URL, headers=headers, json=body, timeout=20)
+        response = requests.post(_DTOOLS_API_URL, headers=headers, json=body, timeout=20, verify=False)
         response.raise_for_status()
         data = response.json()
-    except requests.exceptions.ConnectionError:
-        return [], 0, "Impossible de joindre l'API D-Tools (ConnectionError)."
+    except requests.exceptions.ConnectionError as exc:
+        cause = str(exc.args[0]) if exc.args else str(exc)
+        return [], 0, f"Impossible de joindre l'API D-Tools (ConnectionError) : {cause[:200]}"
     except requests.exceptions.Timeout:
         return [], 0, "La requête vers D-Tools a expiré (Timeout 20 s)."
     except requests.exceptions.HTTPError as exc:
