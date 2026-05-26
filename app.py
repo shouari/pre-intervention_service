@@ -573,11 +573,39 @@ with tab_hist:
     with top3:
         st.caption(f"DB : {DB_PATH.name}")
 
+    s1, s2 = st.columns([2, 4])
+    with s1:
+        st.caption("Trier par")
+    with s2:
+        sort_options = {
+            "Date planifiée ↓": ("scheduled_datetime", True),
+            "Date planifiée ↑": ("scheduled_datetime", False),
+            "Nom client A→Z":   ("client_name",        False),
+            "Nom client Z→A":   ("client_name",        True),
+            "Statut A→Z":       ("status",             False),
+            "Statut Z→A":       ("status",             True),
+            "Complétion ↓":     ("completion_score",   True),
+            "Complétion ↑":     ("completion_score",   False),
+        }
+        sort_label = st.selectbox(
+            "Tri", list(sort_options.keys()), key="history_sort",
+            label_visibility="collapsed",
+        )
+
     rows = list_pre_interventions(search)
     # Filtre date côté Python
     if filter_date:
         date_str_filter = filter_date.strftime("%Y-%m-%d")
         rows = [r for r in rows if (r["scheduled_datetime"] or "").startswith(date_str_filter)]
+
+    # Tri
+    sort_key, sort_rev = sort_options[sort_label]
+    rows = sorted(
+        rows,
+        key=lambda r: (r[sort_key] or "") if sort_key != "completion_score"
+                      else (r[sort_key] or 0),
+        reverse=sort_rev,
+    )
 
     if not rows:
         st.info("Aucune pré-intervention enregistrée pour ce filtre.")
