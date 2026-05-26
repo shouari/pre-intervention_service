@@ -103,6 +103,14 @@ def init_db() -> None:
         )
     """)
 
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key        TEXT PRIMARY KEY,
+            value      TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -196,6 +204,27 @@ def list_pre_interventions(search: str = "") -> List[sqlite3.Row]:
 def get_pre_intervention(pre_id: int) -> Optional[Dict[str, Any]]:
     conn = get_conn()
     row = conn.execute("SELECT * FROM pre_interventions WHERE id=?", (pre_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_pre_intervention_by_sc_number(sc_number: str) -> Optional[Dict[str, Any]]:
+    """
+    Retourne la pré-intervention dont service_call == sc_number,
+    ou None si absente. Prend le plus récent en cas de doublon.
+    """
+    if not sc_number or not sc_number.strip():
+        return None
+    conn = get_conn()
+    row = conn.execute(
+        """
+        SELECT id FROM pre_interventions
+        WHERE service_call = ?
+        ORDER BY updated_at DESC
+        LIMIT 1
+        """,
+        (sc_number.strip(),),
+    ).fetchone()
     conn.close()
     return dict(row) if row else None
 
@@ -384,3 +413,29 @@ def get_similar_cases(systems: List[str], limit: int = 4) -> List[Dict[str, Any]
 
     scored.sort(key=lambda x: x[0], reverse=True)
     return [item for _, item in scored[:limit]]
+
+
+# ─── App settings ──────────────────────────────────────────
+
+def set_setting(key: str, value: str) -> None:
+    """Upsert une valeur dans app_settings."""
+    conn = get_conn()
+    conn.execute("""
+        INSERT INTO app_settings (key, value, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+            value      = excluded.value,
+            updated_at = excluded.updated_at
+    """, (key, value, datetime.now().isoformat(timespec="seconds")))
+    conn.commit()
+    conn.close()
+
+
+def get_setting(key: str) -> str | None:
+    """Retourne la valeur d'un setting, ou None si absent."""
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT value FROM app_settings WHERE key = ?", (key,)
+    ).fetchone()
+    conn.close()
+    return row["value"] if row else None

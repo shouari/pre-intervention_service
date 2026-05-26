@@ -208,8 +208,9 @@ with tab_prep:
                     from database import save_pre_intervention
                     from utils import format_datetime
 
-                    saved = 0
-                    skipped = 0
+                    saved            = 0
+                    skipped_existing = 0
+                    skipped          = 0
                     for item in parse_sc_list_to_dispatch(sc_list):
                         dt_val = item["scheduled_datetime"]
                         dt_str = format_datetime(dt_val) if dt_val else ""
@@ -250,13 +251,26 @@ with tab_prep:
                             "ai_output": {},
                         }
                         try:
-                            save_pre_intervention(minimal_payload, None)
-                            saved += 1
+                            from database import get_pre_intervention_by_sc_number
+                            sc_num   = item.get("service_call") or ""
+                            existing = get_pre_intervention_by_sc_number(sc_num)
+                            if existing:
+                                skipped_existing += 1
+                            else:
+                                save_pre_intervention(minimal_payload, None)
+                                saved += 1
                         except Exception:
                             skipped += 1
 
+                    # ── Enregistrer le timestamp du fetch pour le reminder ──
+                    from database import set_setting as _set_setting
+                    _set_setting("last_fetch_at",   datetime.now().isoformat(timespec="seconds"))
+                    _set_setting("last_fetch_date", date_str_batch)
+
                     st.success(
-                        f"✅ {saved} SC importés en DB pour le {date_str_batch}"
+                        f"✅ {saved} nouveau(x) SC importés"
+                        + (f", {skipped_existing} déjà présent(s) — ignorés" if skipped_existing else "")
+                        + f" pour le {date_str_batch}"
                         + (f" ({skipped} erreurs)" if skipped else "")
                         + " — consultez l'onglet **Historique**."
                     )
